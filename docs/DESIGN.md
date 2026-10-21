@@ -1,6 +1,6 @@
 # Family Expenses — Design
 
-*Version 0.2 · 2026-10-21 · M1*
+*Version 0.3 · 2026-10-21 · M2*
 
 A website where a family records its day-to-day expenses, looks at any month, searches between dates and
 tracks a monthly budget. Built for personal/family use (non-commercial), hosted for free.
@@ -271,8 +271,8 @@ with family switcher and account menu. Works from 360 px wide with no sideways s
 | # | Milestone | Status |
 |---|---|---|
 | M0 | Design doc + project setup (Next.js, DB container, Drizzle, Vitest, lint/typecheck) | ✅ `1862912` |
-| M1 | Register, login, logout, lockout, security questions, forgot/change password, first-login flow | ✅ done, awaiting review |
-| M2 | Families: create, join code, requests + approval, head-created logins, password reset by head, switcher, transfer head, remove/leave | ⏳ |
+| M1 | Register, login, logout, lockout, security questions, forgot/change password, first-login flow | ✅ `55404e9` |
+| M2 | Families: create, join code, requests + approval, head-created logins, password reset by head, switcher, transfer head, remove/leave | ✅ done, awaiting review |
 | M3 | Expenses: add/edit/delete with date windows, categories, payment mode, note, high-value alerts + per-member limits, change log | ⏳ |
 | M4 | Receipt photos | ⏳ |
 | M5 | Search between dates + monthly view with totals | ⏳ |
@@ -298,6 +298,23 @@ Each milestone: build → tests → browser check → summary → user reviews �
 - Not in M1: security headers / CSP (M7), per-IP rate limiting (only per-account lockouts for now).
 - Tests: 48 unit + database tests (Vitest, `family_test`), 10 browser journeys × desktop and 390 px phone
   (Playwright + Edge, production build on port 3100 against `family_test`).
+
+### 10.2 As built — M2 (families)
+
+- Tables `families`, `family_members`, `join_requests`, `audit_log` + enums (migration `0001_families.sql`).
+  A partial unique index (`family_one_head`) makes "exactly one active head" a database rule, not just code.
+- Service `src/server/services/families.ts`: every change checks the caller's role itself
+  (`NotAllowedError` → the friendly `(app)/error.tsx` page). Actions take the family id from the form, so an old
+  tab can't act on a different family after a switch.
+- Active family = this browser's choice (`sessions.active_family_id`) → last used anywhere (`users.last_family_id`)
+  → oldest membership. No family → `/welcome`.
+- Pages: `/welcome` (create, join, my requests, my families), `/family` (code, requests, members, head actions,
+  leave), `/family/add-member`. Header: family switcher (when in 2+ families), Home, Family.
+- Audit actions so far: FAMILY_CREATED, JOIN_CODE_CHANGED, JOIN_REQUESTED, JOIN_APPROVED, JOIN_REJECTED,
+  MEMBER_LOGIN_CREATED, PASSWORD_RESET_BY_HEAD, HEAD_TRANSFERRED, MEMBER_REMOVED, MEMBER_LEFT.
+- Note: a person in two families can have their password reset by the head of either family (F6 as specified).
+  They chose to join each family, and every reset is audited.
+- A head who is the only member can't leave (no "delete family" in v1).
 
 ## 11. Decision log
 

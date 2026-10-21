@@ -120,6 +120,10 @@ export type SessionUser = {
   username: string;
   displayName: string;
   mustChangePassword: boolean;
+  /** Family chosen in this browser (may be stale — always re-check membership). */
+  activeFamilyId: string | null;
+  /** Family the user last used on any device. */
+  lastFamilyId: string | null;
 };
 
 /** The user behind a cookie token, or null. Keeps an active session alive for another 30 days. */
@@ -130,6 +134,8 @@ export async function findSessionUser(token: string, now = new Date()): Promise<
       sessionId: sessions.id,
       expiresAt: sessions.expiresAt,
       lastSeenAt: sessions.lastSeenAt,
+      activeFamilyId: sessions.activeFamilyId,
+      lastFamilyId: users.lastFamilyId,
       id: users.id,
       username: users.username,
       displayName: users.displayName,
@@ -156,6 +162,8 @@ export async function findSessionUser(token: string, now = new Date()): Promise<
     username: row.username,
     displayName: row.displayName,
     mustChangePassword: row.mustChangePassword,
+    activeFamilyId: row.activeFamilyId,
+    lastFamilyId: row.lastFamilyId,
   };
 }
 
@@ -346,7 +354,7 @@ async function replaceAnswers(userId: string, q: SecurityQuestionInput): Promise
   });
 }
 
-function isUniqueViolation(error: unknown): boolean {
+export function isUniqueViolation(error: unknown): boolean {
   const e = error as { code?: string; cause?: { code?: string } };
   return e?.code === "23505" || e?.cause?.code === "23505";
 }

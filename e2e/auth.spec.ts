@@ -1,49 +1,18 @@
 import { hash } from "@node-rs/argon2";
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test } from "@playwright/test";
 import { Pool } from "pg";
+import { login, logout, PASSWORD, register, uniqueName } from "./helpers";
 
 // M1 journeys: register, logout/login, lockout, forgot password, account changes, first login.
 // Next.js keeps recently visited pages mounted but hidden, so prefer role-based locators (they skip hidden
 // elements) over getByLabel for fields that appear on several pages.
-
-const PASSWORD = "secret123";
-
-function uniqueName(prefix: string) {
-  return `${prefix}${Date.now().toString(36)}${Math.floor(Math.random() * 1000)}`;
-}
-
-async function register(page: Page, username: string, displayName = "Ravi Kumar") {
-  await page.goto("/register");
-  await page.getByRole("textbox", { name: "Username" }).fill(username);
-  await page.getByLabel("Your name").fill(displayName);
-  await page.getByLabel("Password", { exact: true }).fill(PASSWORD);
-  await page.getByLabel("Confirm password", { exact: true }).fill(PASSWORD);
-  await page.getByLabel("Question 1").selectOption("first_school");
-  await page.getByLabel("Answer 1").fill("ZP High School");
-  await page.getByLabel("Question 2").selectOption("first_pet");
-  await page.getByLabel("Answer 2").fill("Tommy");
-  await page.getByRole("button", { name: "Create account" }).click();
-  await expect(page.getByRole("heading", { name: `Hello, ${displayName}` })).toBeVisible();
-}
-
-async function login(page: Page, username: string, password = PASSWORD) {
-  await page.goto("/login");
-  await page.getByRole("textbox", { name: "Username" }).fill(username);
-  await page.getByLabel("Password", { exact: true }).fill(password);
-  await page.getByRole("button", { name: "Log in" }).click();
-}
-
-async function logout(page: Page) {
-  await page.getByRole("button", { name: "Log out" }).click();
-  await expect(page).toHaveURL(/\/login$/);
-}
 
 test("register, log out, log back in", async ({ page }) => {
   const username = uniqueName("ravi");
   await register(page, username);
   await logout(page);
   await login(page, username.toUpperCase()); // usernames are not case-sensitive
-  await expect(page.getByRole("heading", { name: "Hello, Ravi Kumar" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Welcome, Ravi Kumar" })).toBeVisible();
 });
 
 test("register shows field errors and keeps what was typed", async ({ page }) => {
@@ -115,11 +84,11 @@ test("forgot password with security questions", async ({ page }) => {
   await page.getByLabel("New password", { exact: true }).fill("newpass123");
   await page.getByLabel("Confirm new password", { exact: true }).fill("newpass123");
   await page.getByRole("button", { name: "Set new password" }).click();
-  await expect(page.getByRole("heading", { name: "Hello, Ravi Kumar" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Welcome, Ravi Kumar" })).toBeVisible();
 
   await logout(page);
   await login(page, username, "newpass123");
-  await expect(page.getByRole("heading", { name: "Hello, Ravi Kumar" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Welcome, Ravi Kumar" })).toBeVisible();
 });
 
 test("unknown username still shows two questions", async ({ page }) => {
@@ -169,7 +138,7 @@ test("account page: profile, password and questions", async ({ page }) => {
   await expect(page.getByText(/Current: “What was your childhood nickname/)).toBeVisible();
   await logout(page);
   await login(page, username, "changed123");
-  await expect(page.getByRole("heading", { name: "Hello, Ravi K" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Welcome, Ravi K" })).toBeVisible();
 });
 
 test("pages behind login redirect to the login page", async ({ page }) => {
@@ -201,7 +170,7 @@ test("temporary password must be replaced at first login", async ({ page }) => {
   await page.getByLabel("Question 2").selectOption("nickname");
   await page.getByLabel("Answer 2").fill("Kittu");
   await page.getByRole("button", { name: "Save and continue" }).click();
-  await expect(page.getByRole("heading", { name: "Hello, Kiran" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Welcome, Kiran" })).toBeVisible();
 });
 
 test("no sideways scrolling on the register page", async ({ page }) => {
