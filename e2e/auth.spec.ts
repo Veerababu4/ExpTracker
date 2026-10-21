@@ -68,6 +68,8 @@ test("forgot password with security questions", async ({ page }) => {
   await logout(page);
 
   await page.getByRole("link", { name: "Forgot password?" }).click();
+  // Wait for the new page: until it renders, the only "Username" box is the hidden login page's one.
+  await expect(page.getByRole("heading", { name: "Forgot password" })).toBeVisible();
   await page.getByRole("textbox", { name: "Username" }).fill(username);
   await page.getByRole("button", { name: "Continue" }).click();
   await expect(page.getByLabel("What was the name of your first school?")).toBeVisible();

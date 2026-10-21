@@ -1,6 +1,6 @@
 # Family Expenses — Design
 
-*Version 0.3 · 2026-10-21 · M2*
+*Version 0.4 · 2026-10-21 · M3*
 
 A website where a family records its day-to-day expenses, looks at any month, searches between dates and
 tracks a monthly budget. Built for personal/family use (non-commercial), hosted for free.
@@ -272,8 +272,8 @@ with family switcher and account menu. Works from 360 px wide with no sideways s
 |---|---|---|
 | M0 | Design doc + project setup (Next.js, DB container, Drizzle, Vitest, lint/typecheck) | ✅ `1862912` |
 | M1 | Register, login, logout, lockout, security questions, forgot/change password, first-login flow | ✅ `55404e9` |
-| M2 | Families: create, join code, requests + approval, head-created logins, password reset by head, switcher, transfer head, remove/leave | ✅ done, awaiting review |
-| M3 | Expenses: add/edit/delete with date windows, categories, payment mode, note, high-value alerts + per-member limits, change log | ⏳ |
+| M2 | Families: create, join code, requests + approval, head-created logins, password reset by head, switcher, transfer head, remove/leave | ✅ `0fc7b66` |
+| M3 | Expenses: add/edit/delete with date windows, categories, payment mode, note, high-value alerts + per-member limits, change log | ✅ `a763aad` |
 | M4 | Receipt photos | ⏳ |
 | M5 | Search between dates + monthly view with totals | ⏳ |
 | M6 | Budgets, charts, CSV export, mobile polish | ⏳ |
@@ -315,6 +315,21 @@ Each milestone: build → tests → browser check → summary → user reviews �
 - Note: a person in two families can have their password reset by the head of either family (F6 as specified).
   They chose to join each family, and every reset is audited.
 - A head who is the only member can't leave (no "delete family" in v1).
+
+### 10.3 As built — M3 (expenses)
+
+- Migration `0002_expenses.sql`: `categories`, `expenses` (+ `payment_mode` enum, checks: amount ₹1–₹10,00,000,
+  currency = INR, note ≤ 200), alert-limit columns on `family_members`. It also copies the default categories into
+  families created before M3; `createFamily` seeds them for new ones.
+- Services: `expenses.ts` (add/edit/delete with the §4.1 windows; edit checks the current and new date; members
+  only their own; soft delete; change log with only the changed fields), `categories.ts`, `alert-limits.ts`.
+- Pages: `/` = Add expense (date min/max = the person's window; changing the date shows that day's entries),
+  `/expenses/[id]` (edit/delete or read-only with the reason; change log for the head), `/family/categories`,
+  `/family/limits`. Header link "Add".
+- High-value warning (§4.2): live under the amount; the very-high one blinks **5 times (~5 s) then stays solid red**
+  — accessibility guidelines (WCAG 2.2.2) don't allow endless blinking — and doesn't blink with "reduce motion".
+  The amount's owner's limits are used (the head editing Sita's expense sees Sita's alerts).
+- Hidden categories: not offered for new expenses; an expense that already has one keeps it ("(hidden)").
 
 ## 11. Decision log
 

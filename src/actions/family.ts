@@ -1,6 +1,6 @@
 "use server";
 
-import { refresh } from "next/cache";
+import { refresh, revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { invalid, keepValues, readForm, type FormState } from "@/lib/form-state";
 import { familyNameSchema, joinCodeSchema, memberLoginSchema, resetPasswordSchema, uuidSchema } from "@/lib/validation/family";
@@ -19,6 +19,14 @@ import {
   transferHead,
 } from "@/server/services/families";
 
+/**
+ * The header (family name, switcher, nav) lives in the layout, which Next.js keeps across a redirect.
+ * When membership or the active family changes, the layout must be re-rendered too.
+ */
+function refreshLayout() {
+  revalidatePath("/", "layout");
+}
+
 // Family Server Actions (DESIGN §3.2). The family id comes from the form so an action always applies to the
 // family the user was looking at; the service then checks the user's role in that family.
 
@@ -35,6 +43,7 @@ export async function createFamilyAction(_prev: FormState, formData: FormData): 
   const parsed = familyNameSchema.safeParse(form);
   if (!parsed.success) return invalid(parsed.error, form);
   await createFamily(user.id, parsed.data.name, user.sessionId);
+  refreshLayout();
   redirect("/family?created=1");
 }
 
@@ -69,6 +78,7 @@ export async function cancelJoinRequestAction(formData: FormData): Promise<void>
 export async function switchFamilyAction(formData: FormData): Promise<void> {
   const user = await requireUser();
   await switchFamily(user.id, idFrom(formData, "familyId"), user.sessionId);
+  refreshLayout();
   redirect("/");
 }
 
@@ -128,6 +138,7 @@ export async function leaveFamilyAction(_prev: FormState, formData: FormData): P
   const user = await requireUser();
   const result = await leaveFamily(user.id, idFrom(formData, "familyId"));
   if (!result.ok) return { message: "You're the family head. Make another member head before leaving." };
+  refreshLayout();
   redirect("/");
 }
 

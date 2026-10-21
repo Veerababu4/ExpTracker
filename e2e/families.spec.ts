@@ -1,29 +1,10 @@
-import { expect, test, type Page } from "@playwright/test";
-import { closeExtraPages, login, logout, newUserPage, register, uniqueName } from "./helpers";
+import { expect, test } from "@playwright/test";
+import { askToJoin, closeExtraPages, createFamily, expectHome, login, logout, memberRow, newUserPage, register, uniqueName } from "./helpers";
 
 // M2 journeys: create a family, join with a code and approval, head-created logins, password reset,
 // head transfer, remove/leave, and switching between families.
 
 test.afterEach(closeExtraPages);
-
-async function createFamily(page: Page, name: string): Promise<string> {
-  await page.goto("/welcome");
-  await page.getByLabel("Family name").fill(name);
-  await page.getByRole("button", { name: "Create family" }).click();
-  await expect(page.getByRole("heading", { name, level: 1 })).toBeVisible();
-  await expect(page.getByText("Family created.")).toBeVisible();
-  return (await page.getByTestId("join-code").innerText()).trim();
-}
-
-async function askToJoin(page: Page, code: string) {
-  await page.goto("/welcome");
-  await page.getByLabel("Family code").fill(code.toLowerCase()); // codes aren't case-sensitive
-  await page.getByRole("button", { name: "Ask to join" }).click();
-}
-
-function memberRow(page: Page, username: string) {
-  return page.getByRole("listitem").filter({ hasText: `@${username}` });
-}
 
 test("create a family, join with the code, head approves", async ({ page, browser, baseURL, viewport }) => {
   const headName = uniqueName("ravi");
@@ -51,7 +32,7 @@ test("create a family, join with the code, head approves", async ({ page, browse
   await expect(memberRow(page, memberName)).toContainText("Joined");
 
   await member.goto("/");
-  await expect(member.getByText("You're in Kumar family as a member")).toBeVisible();
+  await expectHome(member, "Kumar family");
   await member.goto("/family");
   await expect(member.getByTestId("join-code")).toHaveCount(0); // members don't see the code
   await expect(member.getByRole("button", { name: "Remove" })).toHaveCount(0);
@@ -101,7 +82,7 @@ test("head creates a login; the member sets their own password at first login", 
   await member.getByLabel("Question 2").selectOption("first_school");
   await member.getByLabel("Answer 2").fill("Little Flower");
   await member.getByRole("button", { name: "Save and continue" }).click();
-  await expect(member.getByText("You're in Kumar family as a member")).toBeVisible();
+  await expectHome(member, "Kumar family");
 });
 
 test("head resets a member's password, signing them out", async ({ page, browser, baseURL, viewport }) => {
@@ -129,7 +110,7 @@ test("head resets a member's password, signing them out", async ({ page, browser
   await member.getByLabel("New password", { exact: true }).fill("sita-new12");
   await member.getByLabel("Confirm new password", { exact: true }).fill("sita-new12");
   await member.getByRole("button", { name: "Save and continue" }).click();
-  await expect(member.getByText("You're in Kumar family as a member")).toBeVisible();
+  await expectHome(member, "Kumar family");
 });
 
 test("transfer head, then the old head can leave; head removes a member", async ({ page, browser, baseURL, viewport }) => {
@@ -191,16 +172,16 @@ test("one person in two families switches between them", async ({ page, browser,
   const switcher = page.getByLabel("Family", { exact: true });
   await expect(switcher).toBeVisible();
   await switcher.selectOption({ label: "Ravi & Sita" });
-  await expect(page.getByText("You're in Ravi & Sita as a member")).toBeVisible();
+  await expectHome(page, "Ravi & Sita");
   await page.getByLabel("Family", { exact: true }).selectOption({ label: "Parents" });
-  await expect(page.getByText("You're in Parents as the family head")).toBeVisible();
+  await expectHome(page, "Parents");
 
   // The choice is remembered after logging in again.
   await page.getByLabel("Family", { exact: true }).selectOption({ label: "Ravi & Sita" });
-  await expect(page.getByText("You're in Ravi & Sita as a member")).toBeVisible();
+  await expectHome(page, "Ravi & Sita");
   await logout(page);
   await login(page, sitaName);
-  await expect(page.getByText("You're in Ravi & Sita as a member")).toBeVisible();
+  await expectHome(page, "Ravi & Sita");
 });
 
 test("members can't open head-only pages", async ({ page, browser, baseURL, viewport }) => {

@@ -2,8 +2,9 @@ import "server-only";
 import { randomInt } from "node:crypto";
 import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { db } from "@/server/db";
-import { families, familyMembers, joinRequests, sessions, users } from "@/server/db/schema";
+import { categories, families, familyMembers, joinRequests, sessions, users } from "@/server/db/schema";
 import { hashSecret } from "@/server/auth/hashing";
+import { DEFAULT_CATEGORIES } from "@/lib/expense-options";
 import { JOIN_CODE_ALPHABET, JOIN_CODE_LENGTH } from "@/lib/rules/join-code";
 import { isUniqueViolation } from "./accounts";
 import { writeAudit } from "./audit";
@@ -69,13 +70,13 @@ export async function getRole(userId: string, familyId: string): Promise<Role | 
   return row?.role ?? null;
 }
 
-async function assertHead(userId: string, familyId: string): Promise<void> {
+export async function assertHead(userId: string, familyId: string): Promise<void> {
   if ((await getRole(userId, familyId)) !== "HEAD") {
     throw new NotAllowedError("Only the family head can do that.");
   }
 }
 
-async function assertMember(userId: string, familyId: string): Promise<Role> {
+export async function assertMember(userId: string, familyId: string): Promise<Role> {
   const role = await getRole(userId, familyId);
   if (!role) throw new NotAllowedError("You're not a member of this family.");
   return role;
@@ -120,6 +121,9 @@ export async function createFamily(userId: string, name: string, sessionId?: str
     db.transaction(async (tx) => {
       const [row] = await tx.insert(families).values({ name, joinCode, createdBy: userId }).returning();
       await tx.insert(familyMembers).values({ familyId: row.id, userId, role: "HEAD" });
+      await tx
+        .insert(categories)
+        .values(DEFAULT_CATEGORIES.map((name, i) => ({ familyId: row.id, name, sortOrder: (i + 1) * 10 })));
       await writeAudit(tx, {
         familyId: row.id,
         actorId: userId,

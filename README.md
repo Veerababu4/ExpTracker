@@ -1,7 +1,7 @@
 # Family Expenses
 
 Track a family's daily expenses, view any month, search between dates and keep to a monthly budget.
-Requirements, rules, database and milestones: [`docs/DESIGN.md`](docs/DESIGN.md).
+Requirements, rules, database and milestones: [`docs/DESIGN.md`](docs/DESIGN.md). Current status and how to resume: [`docs/HANDOVER.md`](docs/HANDOVER.md).
 
 Stack: Next.js 16 (TypeScript, App Router) · PostgreSQL (Drizzle ORM) · Tailwind CSS · Vitest.
 
