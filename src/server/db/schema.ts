@@ -1,7 +1,10 @@
 // Drizzle table definitions (DESIGN §5). Tables are added milestone by milestone.
 import { sql } from "drizzle-orm";
 import {
+  bigint,
   boolean,
+  check,
+  date,
   index,
   integer,
   jsonb,
@@ -94,6 +97,9 @@ export const familyMembers = pgTable(
     status: memberStatus("status").notNull().default("ACTIVE"),
     joinedAt: timestamp("joined_at", { withTimezone: true }).notNull().defaultNow(),
     leftAt: timestamp("left_at", { withTimezone: true }),
+    // M3: high-value alert limits for this person in this family; null = default (₹2,000 / ₹20,000).
+    highAlertPaise: bigint("high_alert_paise", { mode: "number" }),
+    veryHighAlertPaise: bigint("very_high_alert_paise", { mode: "number" }),
   },
   (t) => [
     primaryKey({ columns: [t.familyId, t.userId] }),
@@ -138,4 +144,57 @@ export const auditLog = pgTable(
     at: timestamp("at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("audit_log_family_idx").on(t.familyId, t.at)],
+);
+
+// ── M3: expenses ──────────────────────────────────────────────────────────────
+
+export const paymentMode = pgEnum("payment_mode", ["CASH", "UPI", "CARD", "NET_BANKING", "OTHER"]);
+
+export const categories = pgTable(
+  "categories",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    familyId: uuid("family_id")
+      .notNull()
+      .references(() => families.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    hidden: boolean("hidden").notNull().default(false),
+    sortOrder: integer("sort_order").notNull().default(1000),
+    createdAt: createdAt(),
+  },
+  (t) => [uniqueIndex("categories_family_name").on(t.familyId, sql`lower(${t.name})`)],
+);
+
+export const expenses = pgTable(
+  "expenses",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    familyId: uuid("family_id")
+      .notNull()
+      .references(() => families.id, { onDelete: "cascade" }),
+    /** The member the expense belongs to (who entered it). Edits by the head don't change it. */
+    ownerId: uuid("owner_id")
+      .notNull()
+      .references(() => users.id),
+    expenseDate: date("expense_date", { mode: "string" }).notNull(),
+    amountPaise: bigint("amount_paise", { mode: "number" }).notNull(),
+    currency: text("currency").notNull().default("INR"),
+    categoryId: uuid("category_id").references(() => categories.id),
+    paymentMode: paymentMode("payment_mode"),
+    note: text("note"),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: createdAt(),
+    updatedBy: uuid("updated_by").references(() => users.id),
+    updatedAt: timestamp("updated_at", { withTimezone: true }),
+    deletedBy: uuid("deleted_by").references(() => users.id),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
+  },
+  (t) => [
+    index("expenses_family_date").on(t.familyId, t.expenseDate).where(sql`${t.deletedAt} is null`),
+    check("expenses_amount_range", sql`${t.amountPaise} between 100 and 100000000`),
+    check("expenses_currency_inr", sql`${t.currency} = 'INR'`),
+    check("expenses_note_length", sql`char_length(${t.note}) <= 200`),
+  ],
 );

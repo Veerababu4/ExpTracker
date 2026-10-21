@@ -7,7 +7,7 @@ import type { FormState } from "@/lib/form-state";
 // Small building blocks shared by every form. Errors are linked to their inputs (aria-describedby)
 // so screen readers announce them.
 
-const inputClass =
+export const inputClass =
   "w-full rounded-lg border border-zinc-300 bg-white px-3 py-2.5 text-base text-zinc-900 shadow-sm outline-none " +
   "focus:border-teal-600 focus:ring-2 focus:ring-teal-600/30 aria-[invalid=true]:border-red-500";
 

@@ -77,7 +77,7 @@ async function Header() {
             <span aria-hidden className="text-zinc-300">
               |
             </span>
-            <NavLink href="/">Home</NavLink>
+            <NavLink href="/">Add</NavLink>
             <NavLink href="/family">Family</NavLink>
           </nav>
         )

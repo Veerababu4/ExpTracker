@@ -130,6 +130,27 @@ export default async function FamilyPage({ searchParams }: { searchParams: Promi
         )}
       </Card>
 
+      <Card title="Settings" id="settings">
+        <ul className="flex flex-col gap-2 text-sm">
+          {isHead && (
+            <li>
+              <Link href="/family/categories" className="font-medium text-teal-700 hover:underline">
+                Categories →
+              </Link>{" "}
+              <span className="text-zinc-500">add, rename or hide expense categories</span>
+            </li>
+          )}
+          <li>
+            <Link href="/family/limits" className="font-medium text-teal-700 hover:underline">
+              {isHead ? "Alert limits →" : "Your alert limits →"}
+            </Link>{" "}
+            <span className="text-zinc-500">
+              {isHead ? "when the high-value warnings appear, per member" : "when the high-value warnings appear for you"}
+            </span>
+          </li>
+        </ul>
+      </Card>
+
       <Card title={isHead ? "Leaving this family" : "Leave this family"} id="leave">
         {isHead ? (
           <p className="text-sm text-zinc-600">

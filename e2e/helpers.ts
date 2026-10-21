@@ -46,3 +46,37 @@ export async function newUserPage(browser: Browser, baseURL: string | undefined,
 export async function closeExtraPages() {
   await Promise.all(extraContexts.splice(0).map((c) => c.close()));
 }
+
+// ── Families ──
+
+export async function createFamily(page: Page, name: string): Promise<string> {
+  await page.goto("/welcome");
+  await page.getByLabel("Family name").fill(name);
+  await page.getByRole("button", { name: "Create family" }).click();
+  await expect(page.getByRole("heading", { name, level: 1 })).toBeVisible();
+  await expect(page.getByText("Family created.")).toBeVisible();
+  return (await page.getByTestId("join-code").innerText()).trim();
+}
+
+export async function askToJoin(page: Page, code: string) {
+  await page.goto("/welcome");
+  await page.getByLabel("Family code").fill(code.toLowerCase()); // codes aren't case-sensitive
+  await page.getByRole("button", { name: "Ask to join" }).click();
+}
+
+/** The add-expense home page of the given family is showing. */
+export async function expectHome(page: Page, familyName: string) {
+  await expect(page.getByRole("heading", { name: "Add expense" })).toBeVisible();
+  await expect(page.getByText(`${familyName} · you can use dates from`)).toBeVisible();
+}
+
+export function memberRow(page: Page, username: string) {
+  return page.getByRole("listitem").filter({ hasText: `@${username}` });
+}
+
+/** Head approves a pending join request on the family page. */
+export async function approve(head: Page, username: string) {
+  await head.goto("/family");
+  await memberRow(head, username).getByRole("button", { name: "Approve" }).click();
+  await expect(head.getByText("No pending requests.")).toBeVisible();
+}

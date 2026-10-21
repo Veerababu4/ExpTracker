@@ -13,3 +13,21 @@ body {
   background: var(--color-zinc-50);
   color: var(--color-zinc-900);
 }
+
+/* Very-high expense warning (DESIGN §4.2): blinks about once a second for ~5 seconds, then stays solid red.
+   Accessibility guidelines (WCAG 2.2.2) don't allow endless blinking; "reduce motion" turns it off entirely. */
+@keyframes alert-blink {
+  50% {
+    opacity: 0.2;
+  }
+}
+
+.alert-blink {
+  animation: alert-blink 1s steps(1, end) 5;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .alert-blink {
+    animation: none;
+  }
+}

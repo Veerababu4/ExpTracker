@@ -15,6 +15,13 @@
       "when": 1792580354845,
       "tag": "0001_families",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1792587394496,
+      "tag": "0002_expenses",
+      "breakpoints": true
     }
   ]
 }
