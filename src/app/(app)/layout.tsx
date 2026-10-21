@@ -5,6 +5,7 @@ import { switchFamilyAction } from "@/actions/family";
 import { Brand } from "@/components/brand";
 import { FamilySwitcher } from "@/components/actions";
 import { getCurrentUser } from "@/server/auth/session";
+import { isSiteAdmin } from "@/server/auth/site-admin";
 import { myFamilies, pickActiveFamily } from "@/server/services/families";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
@@ -51,11 +52,14 @@ async function Header() {
 
   const families = await myFamilies(user.id);
   const active = pickActiveFamily(families, user.activeFamilyId, user.lastFamilyId);
+  // Site admins get an extra link: in the main nav when they're in a family, otherwise next to their name.
+  const adminLink = isSiteAdmin(user.username) && <NavLink href="/admin">Admin</NavLink>;
 
   return (
     <HeaderShell
       right={
         <div className="flex items-center gap-1 text-sm">
+          {!active && adminLink}
           <Link
             href="/account"
             className="max-w-32 truncate rounded-lg px-2 py-1.5 font-medium text-zinc-700 hover:bg-zinc-100"
@@ -79,6 +83,7 @@ async function Header() {
             </span>
             <NavLink href="/">Add</NavLink>
             <NavLink href="/family">Family</NavLink>
+            {adminLink}
           </nav>
         )
       }

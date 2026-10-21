@@ -8,6 +8,7 @@ import { requireFamily } from "@/server/auth/family";
 import { limitsFor } from "@/server/services/alert-limits";
 import { listCategories } from "@/server/services/categories";
 import { entriesForDay } from "@/server/services/expenses";
+import { uploadState } from "@/server/services/receipts";
 
 export const metadata: Metadata = { title: "Add expense · Family Expenses" };
 
@@ -19,10 +20,11 @@ export default async function AddExpensePage({ searchParams }: { searchParams: P
   const window = editWindow(family.role, today);
   const date = params.date && isIsoDate(params.date) && isInWindow(params.date, window) ? params.date : today;
 
-  const [categories, limits, entries] = await Promise.all([
+  const [categories, limits, entries, receipts] = await Promise.all([
     listCategories(user.id, family.familyId),
     limitsFor(user.id, family.familyId),
     entriesForDay(user.id, family.familyId, date),
+    uploadState(),
   ]);
 
   return (
@@ -47,6 +49,7 @@ export default async function AddExpensePage({ searchParams }: { searchParams: P
             limits={limits}
             window={window}
             followDate
+            receipts={receipts}
           />
         </div>
         <Card title={date === today ? "Your expenses today" : `Your expenses on ${formatIsoDay(date)}`} id="day">

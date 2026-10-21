@@ -1,21 +1,24 @@
 import "server-only";
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/server/db";
-import { auditLog, categories, expenses, familyMembers, users } from "@/server/db/schema";
+import { auditLog, categories, expenses, familyMembers, receipts, users } from "@/server/db/schema";
 import { editWindow, isInWindow, todayInIndia, type DateWindow, type IsoDate } from "@/lib/rules/dates";
 import { effectiveLimits, type AlertLimits } from "@/lib/rules/alerts";
 import type { PaymentMode } from "@/lib/expense-options";
+import { RECEIPTS_CAP_BYTES, type ReceiptType } from "@/lib/rules/receipts";
 import type { ExpenseInput } from "@/lib/validation/expense";
 import { writeAudit } from "./audit";
-import { assertHead, assertMember, NotAllowedError, type Role } from "./families";
+import { checkDate, loadForChange, type DateRefusal } from "./expense-access";
+import { assertHead, assertMember } from "./families";
+import { ReceiptRefused, storeReceipt, type ReceiptInfo, type ReceiptProblem } from "./receipts";
 
 // Expense rules (DESIGN §3.3, §4.1). Who may change what, and for which dates, is decided here — never in
 // the page. `today` is a parameter so tests can pick the date; it defaults to today in India.
 
 export type ChangeResult =
   | { ok: true; id: string }
-  | { ok: false; reason: "future_date" | "outside_window"; window: DateWindow }
-  | { ok: false; reason: "bad_category" | "not_found" };
+  | DateRefusal
+  | { ok: false; reason: "bad_category" | "not_found" | ReceiptProblem };
 
 /** The fields a person edits, in the shape stored in the change log. */
 type Snapshot = {
@@ -36,13 +39,6 @@ function snapshotOf(input: ExpenseInput): Snapshot {
   };
 }
 
-function checkDate(date: IsoDate, role: Role, today: IsoDate): ChangeResult | null {
-  const window = editWindow(role, today);
-  if (date > today) return { ok: false, reason: "future_date", window };
-  if (!isInWindow(date, window)) return { ok: false, reason: "outside_window", window };
-  return null;
-}
-
 /** A category must belong to this family; hidden ones can only be kept on an expense that already has it. */
 async function categoryAllowed(familyId: string, categoryId: string | null, keepId?: string | null): Promise<boolean> {
   if (!categoryId) return true;
@@ -54,11 +50,13 @@ async function categoryAllowed(familyId: string, categoryId: string | null, keep
 
 // ── Changing ──────────────────────────────────────────────────────────────────
 
+/** Adds an expense, optionally with its receipt (saved together, or neither is saved). */
 export async function addExpense(
   actorId: string,
   familyId: string,
   input: ExpenseInput,
   today: IsoDate = todayInIndia(),
+  options: { receipt?: Buffer; capBytes?: number } = {},
 ): Promise<ChangeResult> {
   const role = await assertMember(actorId, familyId);
   const dateProblem = checkDate(input.expenseDate, role, today);
@@ -66,25 +64,29 @@ export async function addExpense(
   const after = snapshotOf(input);
   if (!(await categoryAllowed(familyId, after.categoryId))) return { ok: false, reason: "bad_category" };
 
-  return db.transaction(async (tx) => {
-    const [row] = await tx
-      .insert(expenses)
-      .values({ familyId, ownerId: actorId, createdBy: actorId, ...after })
-      .returning({ id: expenses.id });
-    await writeAudit(tx, { familyId, actorId, action: "EXPENSE_ADDED", entityType: "expense", entityId: row.id, details: { after } });
-    return { ok: true, id: row.id };
-  });
-}
-
-/** Loads a live expense of this family and checks the actor may change it at all (role + ownership). */
-async function loadForChange(actorId: string, familyId: string, expenseId: string) {
-  const role = await assertMember(actorId, familyId);
-  const row = await db.query.expenses.findFirst({
-    where: and(eq(expenses.id, expenseId), eq(expenses.familyId, familyId), isNull(expenses.deletedAt)),
-  });
-  if (!row) return null;
-  if (role === "MEMBER" && row.ownerId !== actorId) throw new NotAllowedError("You can only change your own expenses.");
-  return { role, row };
+  try {
+    return await db.transaction(async (tx) => {
+      const [row] = await tx
+        .insert(expenses)
+        .values({ familyId, ownerId: actorId, createdBy: actorId, ...after })
+        .returning({ id: expenses.id });
+      const receipt = options.receipt
+        ? (await storeReceipt(tx, { familyId, expenseId: row.id, actorId, bytes: options.receipt }, options.capBytes ?? RECEIPTS_CAP_BYTES)).info
+        : undefined;
+      await writeAudit(tx, {
+        familyId,
+        actorId,
+        action: "EXPENSE_ADDED",
+        entityType: "expense",
+        entityId: row.id,
+        details: receipt ? { after, receipt } : { after },
+      });
+      return { ok: true as const, id: row.id };
+    });
+  } catch (error) {
+    if (error instanceof ReceiptRefused) return { ok: false, reason: error.reason };
+    throw error;
+  }
 }
 
 export async function updateExpense(
@@ -130,7 +132,10 @@ export async function updateExpense(
   return { ok: true, id: expenseId };
 }
 
-/** Soft delete: hidden everywhere, kept in the database and the change log (DESIGN E6). */
+/**
+ * Soft delete: hidden everywhere, kept in the database and the change log (DESIGN E6). Its receipt is removed
+ * for good, so deleted expenses don't keep using receipt space.
+ */
 export async function deleteExpense(
   actorId: string,
   familyId: string,
@@ -145,21 +150,24 @@ export async function deleteExpense(
 
   await db.transaction(async (tx) => {
     await tx.update(expenses).set({ deletedBy: actorId, deletedAt: new Date() }).where(eq(expenses.id, expenseId));
+    const [receipt] = await tx
+      .delete(receipts)
+      .where(eq(receipts.expenseId, expenseId))
+      .returning({ contentType: receipts.contentType, sizeBytes: receipts.sizeBytes });
+    const before = {
+      expenseDate: row.expenseDate,
+      amountPaise: row.amountPaise,
+      categoryId: row.categoryId,
+      paymentMode: row.paymentMode,
+      note: row.note,
+    };
     await writeAudit(tx, {
       familyId,
       actorId,
       action: "EXPENSE_DELETED",
       entityType: "expense",
       entityId: expenseId,
-      details: {
-        before: {
-          expenseDate: row.expenseDate,
-          amountPaise: row.amountPaise,
-          categoryId: row.categoryId,
-          paymentMode: row.paymentMode,
-          note: row.note,
-        },
-      },
+      details: receipt ? { before, receipt } : { before },
     });
   });
   return { ok: true, id: expenseId };
@@ -181,6 +189,7 @@ export type ExpenseView = {
   updatedAt: Date | null;
   /** The owner's limits in this family, for the "High" tag. */
   ownerLimits: AlertLimits;
+  receipt: { id: string; contentType: ReceiptType; sizeBytes: number } | null;
 };
 
 const viewColumns = {
@@ -197,6 +206,9 @@ const viewColumns = {
   updatedAt: expenses.updatedAt,
   highAlertPaise: familyMembers.highAlertPaise,
   veryHighAlertPaise: familyMembers.veryHighAlertPaise,
+  receiptId: receipts.id,
+  receiptType: receipts.contentType,
+  receiptSize: receipts.sizeBytes,
 };
 
 function viewQuery() {
@@ -205,12 +217,17 @@ function viewQuery() {
     .from(expenses)
     .innerJoin(users, eq(users.id, expenses.ownerId))
     .leftJoin(categories, eq(categories.id, expenses.categoryId))
-    .leftJoin(familyMembers, and(eq(familyMembers.familyId, expenses.familyId), eq(familyMembers.userId, expenses.ownerId)));
+    .leftJoin(familyMembers, and(eq(familyMembers.familyId, expenses.familyId), eq(familyMembers.userId, expenses.ownerId)))
+    .leftJoin(receipts, eq(receipts.expenseId, expenses.id)); // never selects the file itself
 }
 
 function toView(row: Awaited<ReturnType<typeof viewQuery>>[number]): ExpenseView {
-  const { highAlertPaise, veryHighAlertPaise, ...rest } = row;
-  return { ...rest, ownerLimits: effectiveLimits({ highAlertPaise, veryHighAlertPaise }) };
+  const { highAlertPaise, veryHighAlertPaise, receiptId, receiptType, receiptSize, ...rest } = row;
+  return {
+    ...rest,
+    ownerLimits: effectiveLimits({ highAlertPaise, veryHighAlertPaise }),
+    receipt: receiptId ? { id: receiptId, contentType: receiptType as ReceiptType, sizeBytes: receiptSize ?? 0 } : null,
+  };
 }
 
 /** What a member sees on the expense page, and whether they may change it today. */
@@ -258,6 +275,8 @@ export type HistoryEntry = {
   at: Date;
   before: Partial<Snapshot> | null;
   after: Partial<Snapshot> | null;
+  /** Receipt added/replaced/removed with this change. */
+  receipt: ReceiptInfo | null;
 };
 
 /** Change log of one expense, newest first. Head only (DESIGN E7). */
@@ -270,8 +289,15 @@ export async function expenseHistory(headId: string, familyId: string, expenseId
     .where(and(eq(auditLog.familyId, familyId), eq(auditLog.entityType, "expense"), eq(auditLog.entityId, expenseId)))
     .orderBy(desc(auditLog.at));
   return rows.map((r) => {
-    const d = (r.details ?? {}) as { before?: Partial<Snapshot>; after?: Partial<Snapshot> };
-    return { action: r.action, actorName: r.actorName, at: r.at, before: d.before ?? null, after: d.after ?? null };
+    const d = (r.details ?? {}) as { before?: Partial<Snapshot>; after?: Partial<Snapshot>; receipt?: ReceiptInfo };
+    return {
+      action: r.action,
+      actorName: r.actorName,
+      at: r.at,
+      before: d.before ?? null,
+      after: d.after ?? null,
+      receipt: d.receipt ?? null,
+    };
   });
 }
 
