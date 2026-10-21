@@ -1,6 +1,6 @@
 # Family Expenses — Design
 
-*Version 0.1 · 2026-10-21 · M0*
+*Version 0.2 · 2026-10-21 · M1*
 
 A website where a family records its day-to-day expenses, looks at any month, searches between dates and
 tracks a monthly budget. Built for personal/family use (non-commercial), hosted for free.
@@ -270,8 +270,8 @@ with family switcher and account menu. Works from 360 px wide with no sideways s
 
 | # | Milestone | Status |
 |---|---|---|
-| M0 | Design doc + project setup (Next.js, DB container, Drizzle, Vitest, lint/typecheck) | ✅ done, awaiting review |
-| M1 | Register, login, logout, lockout, security questions, forgot/change password, first-login flow | ⏳ |
+| M0 | Design doc + project setup (Next.js, DB container, Drizzle, Vitest, lint/typecheck) | ✅ `1862912` |
+| M1 | Register, login, logout, lockout, security questions, forgot/change password, first-login flow | ✅ done, awaiting review |
 | M2 | Families: create, join code, requests + approval, head-created logins, password reset by head, switcher, transfer head, remove/leave | ⏳ |
 | M3 | Expenses: add/edit/delete with date windows, categories, payment mode, note, high-value alerts + per-member limits, change log | ⏳ |
 | M4 | Receipt photos | ⏳ |
@@ -283,6 +283,22 @@ Each milestone: build → tests → browser check → summary → user reviews �
 
 ---
 
+### 10.1 As built — M1 (accounts)
+
+- Tables `users`, `security_answers`, `sessions` (migration `0000_accounts.sql`).
+- Layers: forms (`src/app/(public)`, `src/app/(app)`) → Server Actions `src/actions/auth.ts` → service
+  `src/server/services/accounts.ts` (no cookies; takes `now` so tests can move the clock) → Drizzle.
+  Cookie handling and `requireUser()` live in `src/server/auth/session.ts`.
+- Session cookie `fe_session`; `src/proxy.ts` only pushes its expiry forward on page GETs (no database).
+  The database extends a session at most once an hour.
+- Cache Components is on (Next 16 default): every session read is behind a `loading.tsx`/`<Suspense>` boundary and
+  calls `connection()` first, because session checks read the clock. No user data is cached.
+- Forms report **all** field problems at once (Zod cross-field checks run with `when: () => true`).
+- Forgot password for an unknown username shows two decoy questions chosen by a keyed hash of the name.
+- Not in M1: security headers / CSP (M7), per-IP rate limiting (only per-account lockouts for now).
+- Tests: 48 unit + database tests (Vitest, `family_test`), 10 browser journeys × desktop and 390 px phone
+  (Playwright + Edge, production build on port 3100 against `family_test`).
+
 ## 11. Decision log
 
 | Date | Decision |
@@ -293,3 +309,4 @@ Each milestone: build → tests → browser check → summary → user reviews �
 | 2026-10-21 | Alert limits default ₹2,000 / ₹20,000, head overrides per member per family. |
 | 2026-10-21 | Budgets: head sets family total + optional per category; overspending allowed and highlighted. |
 | 2026-10-21 | English only. Money stored in paise. "Today" = India time. |
+| 2026-10-21 | Keep Next.js Cache Components on; read the session per request, cache nothing per user. Database sessions (hashed token) so password changes can sign out other devices. |

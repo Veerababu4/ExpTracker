@@ -21,7 +21,7 @@ Stack: Next.js 16 (TypeScript, App Router) · PostgreSQL (Drizzle ORM) · Tailwi
    docker exec family-pg psql -U family_app -d family -c "CREATE DATABASE family_test;"
    ```
 
-5. `npm run db:migrate` (once tables exist, from M1).
+5. `npm run db:migrate` — creates the tables in the development database.
 
 ## Daily use
 
@@ -38,7 +38,8 @@ Health check: http://localhost:3000/api/health → `{"status":"ok","database":"o
 |---|---|
 | `npm run dev` | Development server with hot reload |
 | `npm run build` / `npm start` | Production build / run it |
-| `npm test` | Unit and integration tests (Vitest) |
+| `npm test` | Unit and database tests (Vitest; rebuilds the `family_test` database each run; Docker must be running) |
+| `npm run e2e` | Production build + browser tests in Edge (Playwright, port 3100, `family_test` database) |
 | `npm run lint` · `npm run typecheck` | ESLint · TypeScript check |
 | `npm run db:generate` | Create a SQL migration from changes in `src/server/db/schema.ts` |
 | `npm run db:migrate` | Apply migrations to `DATABASE_URL` |
