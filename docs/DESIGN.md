@@ -273,7 +273,7 @@ with family switcher and account menu. Works from 360 px wide with no sideways s
 | M0 | Design doc + project setup (Next.js, DB container, Drizzle, Vitest, lint/typecheck) | ✅ `1862912` |
 | M1 | Register, login, logout, lockout, security questions, forgot/change password, first-login flow | ✅ `55404e9` |
 | M2 | Families: create, join code, requests + approval, head-created logins, password reset by head, switcher, transfer head, remove/leave | ✅ `0fc7b66` |
-| M3 | Expenses: add/edit/delete with date windows, categories, payment mode, note, high-value alerts + per-member limits, change log | ✅ done, awaiting review |
+| M3 | Expenses: add/edit/delete with date windows, categories, payment mode, note, high-value alerts + per-member limits, change log | ✅ `a763aad` |
 | M4 | Receipt photos | ⏳ |
 | M5 | Search between dates + monthly view with totals | ⏳ |
 | M6 | Budgets, charts, CSV export, mobile polish | ⏳ |
