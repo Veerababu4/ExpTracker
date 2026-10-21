@@ -282,7 +282,7 @@ with family switcher and account menu. Works from 360 px wide with no sideways s
 | M1 | Register, login, logout, lockout, security questions, forgot/change password, first-login flow | ✅ `55404e9` |
 | M2 | Families: create, join code, requests + approval, head-created logins, password reset by head, switcher, transfer head, remove/leave | ✅ `0fc7b66` |
 | M3 | Expenses: add/edit/delete with date windows, categories, payment mode, note, high-value alerts + per-member limits, change log | ✅ `a763aad` |
-| M4 | Receipt photos and PDFs (in PostgreSQL, 500 MB shared limit), site admin page with receipts on/off | ✅ built (commit pending) |
+| M4 | Receipt photos and PDFs (in PostgreSQL, 500 MB shared limit), site admin page with receipts on/off | ✅ `883b51e` |
 | M5 | Search between dates + monthly view with totals | ⏳ |
 | M6 | Budgets, charts, CSV export, mobile polish | ⏳ |
 | M7 | Deploy to Vercel + Neon, production checks | ⏳ |

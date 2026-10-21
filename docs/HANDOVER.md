@@ -1,6 +1,6 @@
 # Handover — Family Expenses
 
-*Updated 2026-10-21 (M4 built, not committed yet). Read this first when resuming; requirements and rules are in
+*Updated 2026-10-21 (M4 committed, PR #4 open). Read this first when resuming; requirements and rules are in
 [`DESIGN.md`](DESIGN.md).*
 
 ## 0. Resume in one minute
@@ -22,7 +22,7 @@ reviews → commit only when asked → ask before every push.
 | M1 | Accounts | `55404e9` | `feature/m1-accounts` | PR #1 merged |
 | M2 | Families | `0fc7b66` | `feature/m2-families` | PR #2 merged |
 | M3 | Expenses | `a763aad` | `feature/m3-expenses` | PR #3 merged → `main` = `fdbf15b` |
-| M4 | Receipts + site admin | not committed | `feature/m4-receipts` (from `main`) | — |
+| M4 | Receipts + site admin | `883b51e` | `feature/m4-receipts` (from `main`) | **PR #4** open → `main` |
 | M5 | Search + monthly view | — | — | next |
 | M6 | Budgets, charts, CSV | — | — | |
 | M7 | Deploy (Vercel + Neon) | — | — | |
