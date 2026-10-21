@@ -1,13 +1,12 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { formatDate } from "@/lib/format";
 import { SECURITY_QUESTIONS } from "@/lib/security-questions";
 import { requireUser } from "@/server/auth/session";
 import { getProfile, recoveryQuestions } from "@/server/services/accounts";
 import { ChangePasswordForm, ChangeQuestionsForm, ProfileForm } from "./account-forms";
 
 export const metadata: Metadata = { title: "My account · Family Expenses" };
-
-const joined = new Intl.DateTimeFormat("en-IN", { timeZone: "Asia/Kolkata", day: "numeric", month: "short", year: "numeric" });
 
 export default async function AccountPage() {
   const user = await requireUser();
@@ -21,7 +20,7 @@ export default async function AccountPage() {
         <h1 className="text-2xl font-semibold">My account</h1>
         <p className="text-sm text-zinc-600">
           Username <strong className="text-zinc-800">{profile.username}</strong> · member since{" "}
-          {joined.format(profile.createdAt)}
+          {formatDate(profile.createdAt)}
         </p>
       </div>
 

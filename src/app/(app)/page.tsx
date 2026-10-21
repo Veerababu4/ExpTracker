@@ -1,18 +1,22 @@
 import Link from "next/link";
-import { requireUser } from "@/server/auth/session";
+import { requireFamily } from "@/server/auth/family";
 
-// Home after login. Placeholder until M2 (families) and M3 (add expense, which becomes the home page).
+// Home after login. Users without a family are sent to /welcome. From M3 this becomes the add-expense page.
 export default async function Home() {
-  const user = await requireUser();
+  const { user, family } = await requireFamily();
   return (
     <section className="flex flex-col gap-3">
       <h1 className="text-2xl font-semibold">Hello, {user.displayName}</h1>
       <p className="text-zinc-600">
-        You&apos;re logged in. Creating and joining families comes next (milestone M2), then adding expenses (M3).
+        You&apos;re in <strong className="text-zinc-800">{family.familyName}</strong> as{" "}
+        {family.role === "HEAD" ? "the family head" : "a member"}. Adding expenses arrives in the next milestone (M3).
       </p>
-      <p>
-        <Link href="/account" className="font-medium text-teal-700 hover:underline">
-          Go to my account →
+      <p className="flex flex-wrap gap-x-4 gap-y-1">
+        <Link href="/family" className="font-medium text-teal-700 hover:underline">
+          Family &amp; members →
+        </Link>
+        <Link href="/welcome" className="font-medium text-teal-700 hover:underline">
+          Create or join another family →
         </Link>
       </p>
     </section>
