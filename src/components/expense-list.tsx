@@ -42,6 +42,7 @@ export function ExpenseList({
                     showDate && formatIsoDay(e.expenseDate),
                     showOwner && e.ownerName,
                     e.paymentMode && PAYMENT_MODES[e.paymentMode],
+                    e.receipt && "📎 Receipt",
                     e.note,
                   ]
                     .filter(Boolean)

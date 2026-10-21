@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { useActionState, useId, useState } from "react";
 import { saveExpenseAction } from "@/actions/expenses";
 import { FormMessage, inputClass, SelectField, SubmitButton, TextField } from "@/components/form";
+import { ReceiptPicker, type PickedReceipt } from "@/components/receipt-picker";
 import type { FormState } from "@/lib/form-state";
 import { MAX_NOTE_LENGTH, PAYMENT_MODE_CODES, PAYMENT_MODES } from "@/lib/expense-options";
 import { formatRupees, parseRupees } from "@/lib/money";
@@ -26,6 +27,7 @@ export function ExpenseForm({
   limits,
   window,
   followDate = false,
+  receipts,
 }: {
   familyId: string;
   expenseId?: string;
@@ -37,12 +39,20 @@ export function ExpenseForm({
   window: { from: string; to: string };
   /** Add page: changing the date shows that day's entries below the form. */
   followDate?: boolean;
+  /** Add page: whether a receipt can be attached (the expense page has its own receipt card). */
+  receipts?: "on" | "off" | "full";
 }) {
   const router = useRouter();
   const [amount, setAmount] = useState(initial.amount);
+  const [receipt, setReceipt] = useState<PickedReceipt | null>(null);
   const [state, action] = useActionState(async (prev: FormState, formData: FormData) => {
+    if (receipt && receipts === "on") formData.set("receipt", receipt.file);
     const result = await saveExpenseAction(prev, formData);
-    if (result.ok && !expenseId) setAmount(""); // a fresh form for the next expense
+    if (result.ok && !expenseId) {
+      // a fresh form for the next expense
+      setAmount("");
+      setReceipt(null);
+    }
     return result;
   }, {});
   const errors = state.fieldErrors ?? {};
@@ -140,6 +150,9 @@ export function ExpenseForm({
         defaultValue={v.note}
         errors={errors.note}
       />
+      {receipts === "on" && <ReceiptPicker value={receipt} onChange={setReceipt} errors={errors.receipt} />}
+      {receipts === "off" && <p className="text-sm text-zinc-500">Receipts are turned off at the moment.</p>}
+      {receipts === "full" && <p className="text-sm text-zinc-500">Receipt storage is full, so receipts can&apos;t be attached.</p>}
       <SubmitButton pendingText="Saving…">{expenseId ? "Save changes" : "Save expense"}</SubmitButton>
     </form>
   );

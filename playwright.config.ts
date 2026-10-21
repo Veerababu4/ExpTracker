@@ -28,7 +28,8 @@ export default defineConfig({
     command: `npx next start -p ${PORT}`,
     url: `http://localhost:${PORT}/api/health`,
     reuseExistingServer: false,
-    env: { DATABASE_URL: process.env.TEST_DATABASE_URL ?? "" },
+    // receipts.spec.ts registers these as site admins (one per project; the database is fresh each run).
+    env: { DATABASE_URL: process.env.TEST_DATABASE_URL ?? "", ADMIN_USERNAMES: "admin.desktop,admin.phone" },
     timeout: 60_000,
   },
 });

@@ -1,6 +1,6 @@
 # Family Expenses — Design
 
-*Version 0.4 · 2026-10-21 · M3*
+*Version 0.5 · 2026-10-21 · M4*
 
 A website where a family records its day-to-day expenses, looks at any month, searches between dates and
 tracks a monthly budget. Built for personal/family use (non-commercial), hosted for free.
@@ -99,7 +99,7 @@ Answers are compared after trimming, lower-casing and collapsing spaces, and sto
 
 | ID | Requirement |
 |---|---|
-| E1 | Add expense fields: **date** (default today, editable), **amount** (required), **currency INR** (shown, not editable), **category** (dropdown, optional → "Uncategorised"), **payment mode** (optional: Cash, UPI, Card, Net banking, Other), **note** (optional, ≤ 200 chars), **receipt** (optional, M4). |
+| E1 | Add expense fields: **date** (default today, editable), **amount** (required), **currency INR** (shown, not editable), **category** (dropdown, optional → "Uncategorised"), **payment mode** (optional: Cash, UPI, Card, Net banking, Other), **note** (optional, ≤ 200 chars), **receipt** photo or PDF (optional, §3.7). |
 | E2 | Amount: ₹1.00 – ₹10,00,000.00, at most 2 decimals; commas allowed while typing. |
 | E3 | Date: not in the future; inside the user's **date window** (§4.1). |
 | E4 | **High-value alerts** under the amount field while typing (§4.2). Warning only; never blocks saving. |
@@ -138,9 +138,10 @@ Answers are compared after trimming, lower-casing and collapsing spaces, and sto
 
 | ID | Requirement |
 |---|---|
-| R1 | Attach one receipt per expense: JPG/PNG/WebP photo or PDF, up to 5 MB as picked. Photos are shrunk in the browser (longest side 1600 px, JPEG) before upload; PDFs up to 2 MB. |
-| R2 | Only members of that family can open a receipt (served through an authorised route, never a public link). Replace/remove follows the expense edit rules. |
-| R3 | Storage (decide at M4 after checking free tiers): Vercel Blob (private) or a `receipts` table in PostgreSQL. |
+| R1 | Attach one receipt per expense: JPG/PNG/WebP photo or PDF, up to 5 MB as picked. Photos are shrunk in the browser (longest side 1600 px, JPEG) before upload; PDFs up to 2 MB. Can be attached while adding, or later on the expense page. |
+| R2 | Only members of that family can open a receipt (served through an authorised route, never a public link). Add/replace/remove follows the expense edit rules (window + ownership). Deleting an expense removes its receipt for good (frees the space). |
+| R3 | Storage: a `receipts` table in PostgreSQL (Neon free = 1 GB per project, Oct 2026). **All receipts of all families together may use at most 500 MB**; when full, new receipts are refused with a message and adding expenses keeps working. |
+| R4 | **Site admin** (usernames in the `ADMIN_USERNAMES` setting — not a family role) has a `/admin` page: receipt space used (total, per family — sizes only), the whole database size, and an **on/off switch** for new receipts (takes effect at once, logged). While off, saved receipts can still be opened and removed. |
 
 ---
 
@@ -199,9 +200,10 @@ All ids are UUIDs; all tables have `created_at`; times are `timestamptz` (UTC); 
 | `family_members` | family_id, user_id, role, status, joined_at, left_at?, high_alert_paise?, very_high_alert_paise? | PK (family_id, user_id); partial unique index → one active HEAD per family; null limit = default |
 | `join_requests` | id, family_id, user_id, status (PENDING/APPROVED/REJECTED/CANCELLED), decided_by?, decided_at? | partial unique index → one PENDING per (family, user) |
 | `categories` | id, family_id, name, hidden, sort_order | unique (family_id, lower(name)); defaults copied in when a family is created |
-| `expenses` | id, family_id, owner_id, expense_date, amount_paise, currency, category_id?, payment_mode?, note?, receipt_id?, created_by, updated_by?, updated_at?, deleted_at?, deleted_by? | index (family_id, expense_date) where not deleted; check amount 100..100000000 |
+| `expenses` | id, family_id, owner_id, expense_date, amount_paise, currency, category_id?, payment_mode?, note?, created_by, updated_by?, updated_at?, deleted_at?, deleted_by? | index (family_id, expense_date) where not deleted; check amount 100..100000000 |
 | `budgets` | family_id, month (1st of month), category_id? (null = family total), amount_paise, set_by, updated_at | unique (family_id, month, category_id) `NULLS NOT DISTINCT` |
-| `receipts` | id, family_id, content_type, size, storage_key or bytes | M4 |
+| `receipts` | id, family_id, expense_id (unique), content_type, size_bytes, data (bytea), created_by | one per expense; checks: type is JPG/PNG/WebP/PDF, 1 B – 2 MB, size = length of data |
+| `app_settings` | key, value jsonb, updated_by?, updated_at | site switches, e.g. `receipts_enabled` (missing = on) |
 | `audit_log` | id, family_id?, actor_id, action, entity_type, entity_id, before jsonb?, after jsonb?, at | expense changes, approvals, role/limit/category/budget changes, password resets |
 
 Migrations: `drizzle-kit generate` writes SQL files to `src/server/db/migrations` (committed, reviewed like Flyway
@@ -217,7 +219,8 @@ scripts); `npm run db:migrate` applies them.
 | `/first-login` | user with temporary password | set new password + security questions |
 | `/welcome` | user without a family | create a family / join with code / my requests |
 | `/expenses/new` | member | add form + the day's entries (home page after login) |
-| `/expenses/[id]` | member | view / edit / delete / change log (head) |
+| `/expenses/[id]` | member | view / edit / delete / receipt / change log (head) |
+| `/receipts/[id]` | member of that family | the receipt file (Route Handler; others get "not found") |
 | `/month/[yyyy-mm]` | member | monthly view (budget, totals, charts, list) |
 | `/search` | member | date range search |
 | `/family` | member | members, join code (head), requests (head), create member login (head), transfer head, leave/remove |
@@ -225,6 +228,7 @@ scripts); `npm run db:migrate` applies them.
 | `/family/categories` | head | categories |
 | `/family/budget` | head | budgets |
 | `/account` | user | profile, change password, security questions, my families, logout |
+| `/admin` | site admin | receipt space, receipts on/off |
 
 Layout: mobile first (most entries happen on phones). Bottom bar on phones: **Add · Month · Search · Family**; top bar
 with family switcher and account menu. Works from 360 px wide with no sideways scrolling.
@@ -241,6 +245,9 @@ with family switcher and account menu. Works from 360 px wide with no sideways s
 - Next.js Server Actions already reject cross-site posts (origin check). All input validated with Zod on the server.
 - Security headers (CSP, frame-ancestors none, referrer policy, etc.) set in `next.config.ts`.
 - Lockouts for login and recovery (A5, A7). Errors shown to users never include stack traces or SQL.
+- Receipts: the file type is read from the file's first bytes (not its name or the browser's label); served with
+  the stored type, `X-Content-Type-Options: nosniff`, `Cache-Control: private, no-store`, and photos with
+  `Content-Security-Policy: sandbox`. Server Action uploads are capped at 3 MB (`serverActions.bodySizeLimit`).
 - Secrets only in environment variables (`.env.local` locally, Vercel settings in production); never in git or chat.
 
 ---
@@ -263,6 +270,7 @@ with family switcher and account menu. Works from 360 px wide with no sideways s
 | App | `npm run dev` → http://localhost:3000 | Vercel Hobby, `*.vercel.app` (custom domain optional) |
 | Database | Docker container `family-pg` (postgres:17-alpine, port **5434**, volume `family-pg-data`) — separate from `vihan-pg` | Neon free, region near India |
 | Config | `.env.local` (git-ignored); template in `.env.example` | Vercel environment variables |
+| Site admin | `ADMIN_USERNAMES` in `.env.local` | `ADMIN_USERNAMES` in Vercel settings |
 
 ---
 
@@ -274,7 +282,7 @@ with family switcher and account menu. Works from 360 px wide with no sideways s
 | M1 | Register, login, logout, lockout, security questions, forgot/change password, first-login flow | ✅ `55404e9` |
 | M2 | Families: create, join code, requests + approval, head-created logins, password reset by head, switcher, transfer head, remove/leave | ✅ `0fc7b66` |
 | M3 | Expenses: add/edit/delete with date windows, categories, payment mode, note, high-value alerts + per-member limits, change log | ✅ `a763aad` |
-| M4 | Receipt photos | ⏳ |
+| M4 | Receipt photos and PDFs (in PostgreSQL, 500 MB shared limit), site admin page with receipts on/off | ✅ `883b51e` |
 | M5 | Search between dates + monthly view with totals | ⏳ |
 | M6 | Budgets, charts, CSV export, mobile polish | ⏳ |
 | M7 | Deploy to Vercel + Neon, production checks | ⏳ |
@@ -331,6 +339,21 @@ Each milestone: build → tests → browser check → summary → user reviews �
   The amount's owner's limits are used (the head editing Sita's expense sees Sita's alerts).
 - Hidden categories: not offered for new expenses; an expense that already has one keeps it ("(hidden)").
 
+### 10.4 As built — M4 (receipts)
+
+- Migration `0003_receipts.sql`: `receipts` (bytea, unique `expense_id`, type/size checks) and `app_settings`.
+- Service `receipts.ts`: `storeReceipt` runs inside the caller's transaction (so "add expense + receipt" is all or
+  nothing), takes an advisory lock, then checks on/off and the 500 MB limit. Replacing deletes the old row and inserts
+  a new one (new id → browsers can't show a stale picture). Permission checks shared with expenses through
+  `expense-access.ts`. Change log: `RECEIPT_ADDED/REPLACED/REMOVED`, "Added with receipt"; site switch:
+  `RECEIPTS_TURNED_ON/OFF`.
+- Browser: `components/receipt-picker.tsx` checks type/size, shrinks photos with a canvas (1600 px, JPEG 0.8, then
+  0.6 if still over 2 MB; transparent parts become white), shows a preview chip. The prepared file is kept in React
+  state and added to the form data on submit (React clears file inputs after each submit). The input stays disabled
+  until the page is hydrated, so a file picked during loading isn't lost.
+- Pages: add form has the receipt field; `/expenses/[id]` has a Receipt card (photo inline / PDF link, add, replace,
+  remove); lists show "📎 Receipt"; `/admin` (header link "Admin" for site admins only; others get "not found").
+
 ## 11. Decision log
 
 | Date | Decision |
@@ -342,3 +365,4 @@ Each milestone: build → tests → browser check → summary → user reviews �
 | 2026-10-21 | Budgets: head sets family total + optional per category; overspending allowed and highlighted. |
 | 2026-10-21 | English only. Money stored in paise. "Today" = India time. |
 | 2026-10-21 | Keep Next.js Cache Components on; read the session per request, cache nothing per user. Database sessions (hashed token) so password changes can sign out other devices. |
+| 2026-10-21 | Receipts stored in PostgreSQL (not Vercel Blob): one system, private, transactional. Shared limit 500 MB of Neon's 1 GB; site admin (`ADMIN_USERNAMES`) can switch new receipts off on `/admin`. Deleting an expense removes its receipt. |

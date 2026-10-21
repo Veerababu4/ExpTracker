@@ -4,6 +4,7 @@ import {
   bigint,
   boolean,
   check,
+  customType,
   date,
   index,
   integer,
@@ -198,3 +199,43 @@ export const expenses = pgTable(
     check("expenses_note_length", sql`char_length(${t.note}) <= 200`),
   ],
 );
+
+// ── M4: receipts and site settings ────────────────────────────────────────────
+
+/** Raw file bytes (PostgreSQL bytea) as a Node Buffer. */
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({ dataType: () => "bytea" });
+
+/** One receipt per expense (photo or PDF), stored in the database so it's private and backed up with it. */
+export const receipts = pgTable(
+  "receipts",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    familyId: uuid("family_id")
+      .notNull()
+      .references(() => families.id, { onDelete: "cascade" }),
+    expenseId: uuid("expense_id")
+      .notNull()
+      .unique()
+      .references(() => expenses.id, { onDelete: "cascade" }),
+    contentType: text("content_type").notNull(),
+    sizeBytes: integer("size_bytes").notNull(),
+    data: bytea("data").notNull(),
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    index("receipts_family_idx").on(t.familyId),
+    check("receipts_content_type", sql`${t.contentType} in ('image/jpeg', 'image/png', 'image/webp', 'application/pdf')`),
+    check("receipts_size", sql`${t.sizeBytes} between 1 and 2097152 and ${t.sizeBytes} = octet_length(${t.data})`),
+  ],
+);
+
+/** Site-wide switches set by the site admin (e.g. receipts_enabled). A missing key means the default. */
+export const appSettings = pgTable("app_settings", {
+  key: text("key").primaryKey(),
+  value: jsonb("value").notNull(),
+  updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});

@@ -7,11 +7,14 @@ import { PAYMENT_MODES, UNCATEGORISED, type PaymentMode } from "@/lib/expense-op
 import { formatDateTime, formatIsoDate } from "@/lib/format";
 import { formatRupees, paiseToInput } from "@/lib/money";
 import { alertLevel } from "@/lib/rules/alerts";
+import { formatBytes, isPhoto } from "@/lib/rules/receipts";
 import { uuidSchema } from "@/lib/validation/family";
 import { requireFamily } from "@/server/auth/family";
 import { listCategories } from "@/server/services/categories";
-import { categoryNames, expenseHistory, getExpense, type HistoryEntry } from "@/server/services/expenses";
+import { categoryNames, expenseHistory, getExpense, type ExpenseView, type HistoryEntry } from "@/server/services/expenses";
+import { uploadState } from "@/server/services/receipts";
 import { DeleteExpense } from "./delete-expense";
+import { ReceiptForms } from "./receipt-forms";
 
 export const metadata: Metadata = { title: "Expense · Family Expenses" };
 
@@ -24,9 +27,10 @@ export default async function ExpensePage({ params }: { params: Promise<{ id: st
   const { expense, canChange, whyNot, window } = found;
   const isHead = family.role === "HEAD";
 
-  const [categories, history] = await Promise.all([
+  const [categories, history, uploads] = await Promise.all([
     listCategories(user.id, family.familyId),
     isHead ? expenseHistory(user.id, family.familyId, id) : Promise.resolve([]),
+    canChange ? uploadState() : Promise.resolve("off" as const),
   ]);
   // A hidden category stays selectable on the expense that already uses it.
   if (expense.categoryId && expense.categoryName && !categories.some((c) => c.id === expense.categoryId)) {
@@ -78,9 +82,6 @@ export default async function ExpensePage({ params }: { params: Promise<{ id: st
               />
             </div>
           </Card>
-          <Card title="Delete" id="delete" note="The expense disappears from lists and totals. The change log keeps a record.">
-            <DeleteExpense familyId={family.familyId} expenseId={expense.id} />
-          </Card>
         </>
       ) : (
         <Card title="Details" id="details">
@@ -106,14 +107,44 @@ export default async function ExpensePage({ params }: { params: Promise<{ id: st
         </Card>
       )}
 
+      {(expense.receipt || canChange) && (
+        <Card title="Receipt" id="receipt">
+          {expense.receipt ? <ReceiptView receipt={expense.receipt} /> : <p className="text-sm text-zinc-500">No receipt attached.</p>}
+          {canChange && (
+            <div className="mt-4 border-t border-zinc-100 pt-4">
+              <ReceiptForms familyId={family.familyId} expenseId={expense.id} hasReceipt={!!expense.receipt} uploads={uploads} />
+            </div>
+          )}
+        </Card>
+      )}
+
+      {canChange && (
+        <Card
+          title="Delete"
+          id="delete"
+          note="The expense disappears from lists and totals. The change log keeps a record. Its receipt is removed."
+        >
+          <DeleteExpense familyId={family.familyId} expenseId={expense.id} />
+        </Card>
+      )}
+
       {isHead && (
         <Card title="Change log" id="log" note="Visible to the family head.">
           <ol className="flex flex-col gap-3">
             {history.map((h, i) => (
               <li key={i} className="text-sm">
                 <p>
-                  <strong>{ACTION_TEXT[h.action] ?? h.action}</strong> by {h.actorName ?? "a former user"} ·{" "}
-                  <span className="text-zinc-500">{formatDateTime(h.at)}</span>
+                  <strong>
+                    {ACTION_TEXT[h.action] ?? h.action}
+                    {h.action === "EXPENSE_ADDED" && h.receipt && " with receipt"}
+                  </strong>
+                  {h.receipt && h.action.startsWith("RECEIPT_") && (
+                    <span className="text-zinc-600">
+                      {" "}
+                      ({isPhoto(h.receipt.contentType) ? "photo" : "PDF"}, {formatBytes(h.receipt.sizeBytes)})
+                    </span>
+                  )}{" "}
+                  by {h.actorName ?? "a former user"} · <span className="text-zinc-500">{formatDateTime(h.at)}</span>
                 </p>
                 {h.action === "EXPENSE_UPDATED" && h.before && h.after && (
                   <ul className="mt-1 list-disc pl-5 text-zinc-700">
@@ -134,7 +165,14 @@ export default async function ExpensePage({ params }: { params: Promise<{ id: st
   );
 }
 
-const ACTION_TEXT: Record<string, string> = { EXPENSE_ADDED: "Added", EXPENSE_UPDATED: "Changed", EXPENSE_DELETED: "Deleted" };
+const ACTION_TEXT: Record<string, string> = {
+  EXPENSE_ADDED: "Added",
+  EXPENSE_UPDATED: "Changed",
+  EXPENSE_DELETED: "Deleted",
+  RECEIPT_ADDED: "Receipt added",
+  RECEIPT_REPLACED: "Receipt replaced",
+  RECEIPT_REMOVED: "Receipt removed",
+};
 const FIELD_TEXT: Record<string, string> = {
   expenseDate: "Date",
   amountPaise: "Amount",
@@ -159,6 +197,32 @@ function show(field: string, value: unknown, names: Map<string, string>): string
     default:
       return `“${String(value)}”`;
   }
+}
+
+/** The saved receipt: a photo shows inline, a PDF as a link. Both open full size in a new tab. */
+function ReceiptView({ receipt }: { receipt: NonNullable<ExpenseView["receipt"]> }) {
+  const url = `/receipts/${receipt.id}`;
+  if (!isPhoto(receipt.contentType)) {
+    return (
+      <a href={url} target="_blank" rel="noopener" className="font-medium text-teal-700 hover:underline">
+        Open receipt (PDF, {formatBytes(receipt.sizeBytes)})
+      </a>
+    );
+  }
+  return (
+    <figure className="flex flex-col gap-2">
+      <a href={url} target="_blank" rel="noopener" className="w-fit">
+        {/* eslint-disable-next-line @next/next/no-img-element -- private file behind a login check; the image optimiser would bypass it */}
+        <img src={url} alt="Receipt photo" className="max-h-80 w-auto max-w-full rounded-lg border border-zinc-200" />
+      </a>
+      <figcaption className="text-xs text-zinc-500">
+        Photo · {formatBytes(receipt.sizeBytes)} ·{" "}
+        <a href={url} target="_blank" rel="noopener" className="font-medium text-teal-700 hover:underline">
+          Open full size
+        </a>
+      </figcaption>
+    </figure>
+  );
 }
 
 function historyCategoryIds(history: HistoryEntry[]): string[] {
