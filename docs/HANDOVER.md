@@ -1,6 +1,6 @@
 # Handover — Family Expenses
 
-*Updated 2026-10-22 (M0–M6 merged; M7: the site is live at https://exptracker1.vercel.app on Neon + Vercel; hardening — security headers, Singapore region — on `feature/m7-deploy`, not committed yet). Read this first when resuming; requirements and rules are in
+*Updated 2026-10-22 (M0–M6 merged; M7: the site is live at https://exptracker1.vercel.app on Neon + Vercel; hardening — security headers, Singapore region — committed `8e67a54` on `feature/m7-deploy`, PR into `main` open). Read this first when resuming; requirements and rules are in
 [`DESIGN.md`](DESIGN.md).*
 
 ## 0. Resume in one minute
@@ -9,8 +9,8 @@
    container `family-pg` starts with it.
 2. `cd C:\Veera\Work\family-expenses`, `git fetch`, `git status`, check the PRs below.
 3. `npm run dev` → http://localhost:3000 (development database `family`).
-4. Next work: finish **M7** (§5): the user registers on the live site → add `ADMIN_USERNAMES` in Vercel → the user
-   reviews `feature/m7-deploy` → commit → PR (ask before pushing) → merge → check the live headers and region.
+4. Next work: finish **M7** (§5): the user merges the M7 PR → Vercel deploys `main` → check the live headers and region
+   (`curl -sI https://exptracker1.vercel.app/login`), then the phone smoke test.
 5. Live site: **https://exptracker1.vercel.app** (health: `/api/health`). Vercel project imported from GitHub —
    every merge to `main` deploys; deployment/preview URLs need a Vercel login (Deployment Protection), the production
    domain is public.
@@ -29,7 +29,7 @@ reviews → commit only when asked → ask before every push.
 | M4 | Receipts + site admin | `883b51e` | `feature/m4-receipts` | PR #4 merged → `main` = `c89e096` |
 | M5 | Search + monthly view | `c2763c3` | `feature/m5-search` (from `c89e096`) | PR #5 merged → `main` = `5079e17` |
 | M6 | Budgets, charts, CSV | part 1 `0898b23`, part 2 `bd1f479` | `feature/m6-budgets` (from `1d48bd0`) | PR into `main` open |
-| M7 | Deploy (Vercel + Neon) | not committed | `feature/m7-deploy` (from `4235f25`) | live at exptracker1.vercel.app; hardening waiting for review |
+| M7 | Deploy (Vercel + Neon) | `8e67a54` | `feature/m7-deploy` (from `4235f25`) | PR into `main` open; site live at exptracker1.vercel.app |
 
 - Repo: https://github.com/Veerababu4/ExpTracker (**public**). PRs: https://github.com/Veerababu4/ExpTracker/pulls
 - The repo has `delete_branch_on_merge=false`: stacked PRs need `gh pr edit <n> --base main` after the lower one
@@ -105,8 +105,8 @@ Done: security headers + CSP (`next.config.ts`), `vercel.json` (`sin1`), `e2e/se
 production packages), Neon project + tables (migrations 0000–0004), Vercel import + env vars, live site answering.
 Left:
 
-1. The user registers on the live site → `ADMIN_USERNAMES=<username>` in Vercel (Production + Preview) → redeploy.
-2. Review + commit `feature/m7-deploy` (headers, `vercel.json`, security tests, docs) → PR (ask before pushing) → merge
+1. ✅ The user registered as `veera`; `ADMIN_USERNAMES=veera` is set in Vercel (and recorded in `.env.vercel`).
+2. ✅ `feature/m7-deploy` committed (`8e67a54`), PR open → merge
    → Vercel deploys `main`: check the live CSP/headers with `curl -sI https://exptracker1.vercel.app/login` and that
    responses are fast (functions now next to the database).
 3. Smoke test on a phone: register/login, family, expense with a receipt photo, budget, month charts, CSV download.
