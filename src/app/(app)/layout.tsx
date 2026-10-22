@@ -2,6 +2,7 @@ import Link from "next/link";
 import { Suspense } from "react";
 import { logoutAction } from "@/actions/auth";
 import { switchFamilyAction } from "@/actions/family";
+import { BottomNav } from "@/components/bottom-nav";
 import { Brand } from "@/components/brand";
 import { FamilySwitcher } from "@/components/actions";
 import { getCurrentUser } from "@/server/auth/session";
@@ -19,7 +20,8 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
           </Suspense>
         </div>
       </header>
-      <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-6">{children}</main>
+      {/* pb-24 on phones: room for the bottom bar */}
+      <main className="mx-auto w-full max-w-3xl flex-1 px-4 pt-6 pb-24 sm:pb-6">{children}</main>
     </>
   );
 }
@@ -72,21 +74,27 @@ async function Header() {
       }
       below={
         active && (
-          <nav aria-label="Main" className="-mx-1 flex flex-wrap items-center gap-x-1 gap-y-2 pb-3 text-sm">
-            {families.length > 1 ? (
-              <FamilySwitcher action={switchFamilyAction} families={families} current={active.familyId} />
-            ) : (
-              <span className="px-1 font-semibold text-zinc-800">{active.familyName}</span>
-            )}
-            <span aria-hidden className="text-zinc-300">
-              |
-            </span>
-            <NavLink href="/">Add</NavLink>
-            <NavLink href="/month">Month</NavLink>
-            <NavLink href="/search">Search</NavLink>
-            <NavLink href="/family">Family</NavLink>
-            {adminLink}
-          </nav>
+          <>
+            <nav aria-label="Main" className="-mx-1 flex flex-wrap items-center gap-x-1 gap-y-2 pb-3 text-sm">
+              {families.length > 1 ? (
+                <FamilySwitcher action={switchFamilyAction} families={families} current={active.familyId} />
+              ) : (
+                <span className="px-1 font-semibold text-zinc-800">{active.familyName}</span>
+              )}
+              {/* On phones these four move to the bottom bar. */}
+              <span className="hidden sm:contents">
+                <span aria-hidden className="text-zinc-300">
+                  |
+                </span>
+                <NavLink href="/">Add</NavLink>
+                <NavLink href="/month">Month</NavLink>
+                <NavLink href="/search">Search</NavLink>
+                <NavLink href="/family">Family</NavLink>
+              </span>
+              {adminLink}
+            </nav>
+            <BottomNav />
+          </>
         )
       }
     />

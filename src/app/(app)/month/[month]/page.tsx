@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Form from "next/form";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { BudgetStatusLine } from "@/components/budget-status";
+import { BudgetStatusLine, SpendBar } from "@/components/budget-status";
 import { buttonClass } from "@/components/button-class";
 import { Card } from "@/components/card";
 import { ExpenseList } from "@/components/expense-list";
@@ -14,8 +14,9 @@ import { budgetStatus, categoryBudgetsOverTotal, isBudgetMonth } from "@/lib/rul
 import { addMonths, EARLIEST_DATE, isIsoMonth, monthOf, monthRange, todayInIndia } from "@/lib/rules/dates";
 import { NO_CATEGORY } from "@/lib/validation/search";
 import { requireFamily } from "@/server/auth/family";
-import { monthBudget } from "@/server/services/budgets";
-import { exportHref, monthSummary, type Group } from "@/server/services/reports";
+import { familyTotalBudgets, monthBudget } from "@/server/services/budgets";
+import { exportHref, monthSummary, monthTrend, type Group } from "@/server/services/reports";
+import { DailyChart, TrendChart } from "./month-charts";
 
 export const metadata: Metadata = { title: "Month · Family Expenses" };
 
@@ -23,7 +24,8 @@ const FIRST_MONTH = monthOf(EARLIEST_DATE);
 
 // Monthly view (DESIGN §3.5 S4): any month up to the current one — total, totals by category, member and
 // payment mode (each links to the matching search), and every expense. With a budget (M6, §3.6 B2): how much of
-// the family total and of each category budget is used — amber from 80%, red above 100%.
+// the family total and of each category budget is used — amber from 80%, red above 100%. Charts (B3): the
+// category rows are bars on one shared scale, plus day-by-day and last-6-months column charts.
 export default async function MonthPage({ params }: { params: Promise<{ month: string }> }) {
   const { month } = await params;
   const { user, family } = await requireFamily();
@@ -31,9 +33,11 @@ export default async function MonthPage({ params }: { params: Promise<{ month: s
   const current = monthOf(today);
   if (!isIsoMonth(month) || month < FIRST_MONTH || month > current) notFound();
 
-  const [s, budget] = await Promise.all([
+  const [s, budget, trend, trendBudgets] = await Promise.all([
     monthSummary(user.id, family.familyId, month),
     monthBudget(user.id, family.familyId, month),
+    monthTrend(user.id, family.familyId, month),
+    familyTotalBudgets(user.id, family.familyId, addMonths(month, -5), month),
   ]);
   const { from, to: monthEnd } = monthRange(month);
   const to = monthEnd > today ? today : monthEnd; // search can't look past today
@@ -50,6 +54,9 @@ export default async function MonthPage({ params }: { params: Promise<{ month: s
     ...budget.byCategory.filter((c) => !spent.has(c.categoryId)).map((c) => ({ key: c.categoryId, name: c.name, paise: 0, count: 0 })),
   ];
   const overTotal = categoryBudgetsOverTotal(budget.totalPaise, budget.byCategory.map((c) => c.paise));
+  const budgetOf = (g: Group<string | null>) => (g.key ? (categoryBudget.get(g.key) ?? null) : null);
+  // One scale for every category bar: the biggest spend or budget fills the width.
+  const categoryScale = Math.max(1, ...categoryGroups.map((g) => Math.max(g.paise, budgetOf(g) ?? 0)));
 
   return (
     <div className="flex flex-col gap-6">
@@ -129,10 +136,13 @@ export default async function MonthPage({ params }: { params: Promise<{ month: s
             total={s.totalPaise}
             label={(g) => g.name ?? UNCATEGORISED}
             href={(g) => searchFor({ category: g.key ?? NO_CATEGORY })}
-            budget={(g) => (g.key ? (categoryBudget.get(g.key) ?? null) : null)}
+            bar={{ scalePaise: categoryScale, budget: budgetOf }}
           />
         </Card>
       )}
+
+      {s.count > 0 && <DailyChart month={month} expenses={s.expenses} today={today} />}
+      {trend.some((t) => t.paise > 0) && <TrendChart month={month} trend={trend} budgets={trendBudgets} />}
 
       {s.count > 0 && (
         <div className="grid items-start gap-6 md:grid-cols-2">
@@ -172,21 +182,21 @@ export default async function MonthPage({ params }: { params: Promise<{ month: s
   );
 }
 
-/** One breakdown: name, amount, share of the month and count, biggest first; budget status when there is one. */
+/** One breakdown: name, amount, share of the month and count, biggest first; optionally a bar per row. */
 function Totals<G extends Group<unknown>>({
   groups,
   total,
   label,
   href,
-  budget,
+  bar,
 }: {
   groups: G[];
   total: number;
   label: (g: G) => string;
   /** Link to the matching search, or null when there's no filter for it. */
   href: (g: G) => string | null;
-  /** This row's budget, or null for none. */
-  budget?: (g: G) => number | null;
+  /** Draw each row as a bar on a shared scale, with the row's budget (or null for none). */
+  bar?: { scalePaise: number; budget: (g: G) => number | null };
 }) {
   // A list of flex rows, not a table: the name takes the free space (a table squeezed it to one letter on phones).
   return (
@@ -194,7 +204,6 @@ function Totals<G extends Group<unknown>>({
       {groups.map((g) => {
         const name = label(g);
         const link = href(g);
-        const limit = budget?.(g) ?? null;
         return (
           <li key={String(g.key)} className="flex flex-col gap-1.5 py-2">
             <div className="flex items-center gap-3">
@@ -217,7 +226,7 @@ function Totals<G extends Group<unknown>>({
                 {share(g.paise, total)}
               </span>
             </div>
-            {limit !== null && <BudgetStatusLine status={budgetStatus(g.paise, limit)} budgetPaise={limit} />}
+            {bar && <SpendBar spentPaise={g.paise} budgetPaise={bar.budget(g)} scalePaise={bar.scalePaise} />}
           </li>
         );
       })}

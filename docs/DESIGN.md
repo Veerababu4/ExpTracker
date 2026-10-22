@@ -1,6 +1,6 @@
 # Family Expenses — Design
 
-*Version 0.7 · 2026-10-22 · M6 part 1*
+*Version 0.8 · 2026-10-22 · M6*
 
 A website where a family records its day-to-day expenses, looks at any month, searches between dates and
 tracks a monthly budget. Built for personal/family use (non-commercial), hosted for free.
@@ -221,7 +221,7 @@ scripts); `npm run db:migrate` applies them.
 | `/expenses/new` | member | add form + the day's entries (home page after login) |
 | `/expenses/[id]` | member | view / edit / delete / receipt / change log (head) |
 | `/receipts/[id]` | member of that family | the receipt file (Route Handler; others get "not found") |
-| `/month`, `/month/[yyyy-mm]` | member | monthly view: total and budget status, totals by category (with category budgets) / member / payment mode (each links to the matching search), list, CSV download; charts in M6 part 2. `/month` → current month |
+| `/month`, `/month/[yyyy-mm]` | member | monthly view: total and budget status, totals by category (with category budgets) / member / payment mode (each links to the matching search), list, CSV download; charts: category rows as bars on one scale (budget ticks), day by day, last 6 months. `/month` → current month |
 | `/search` | member | date range search; filters in the address (`?from=…&to=…&member=…&category=…&mode=…&page=…`); CSV download of the whole result |
 | `/export/expenses` | member of that family | CSV file (Route Handler) for `?family=…` + the search fields; others get "not found" |
 | `/family` | member | members, join code (head), requests (head), create member login (head), transfer head, leave/remove |
@@ -231,9 +231,10 @@ scripts); `npm run db:migrate` applies them.
 | `/account` | user | profile, change password, security questions, my families, logout |
 | `/admin` | site admin | receipt space, receipts on/off |
 
-Layout: mobile first (most entries happen on phones). Header nav (all widths, as built in M5): family name/switcher ·
-**Add · Month · Search · Family** (· Admin); top-right: account and log out. A bottom bar on phones is part of M6
-"mobile polish". Works from 360 px wide with no sideways scrolling.
+Layout: mobile first (most entries happen on phones). Header (as built in M6): family name/switcher (· Admin); from
+the `sm` breakpoint (640 px) also **Add · Month · Search · Family**; top-right: account and log out. On phones those
+four pages sit in a fixed **bottom bar** with icons (current page highlighted). Works from 360 px wide with no
+sideways scrolling.
 
 ---
 
@@ -286,7 +287,7 @@ Layout: mobile first (most entries happen on phones). Header nav (all widths, as
 | M3 | Expenses: add/edit/delete with date windows, categories, payment mode, note, high-value alerts + per-member limits, change log | ✅ `a763aad` |
 | M4 | Receipt photos and PDFs (in PostgreSQL, 500 MB shared limit), site admin page with receipts on/off | ✅ `883b51e` |
 | M5 | Search between dates + monthly view with totals | ✅ `c2763c3` |
-| M6 | Budgets, charts, CSV export, mobile polish | 🟡 part 1 built (budgets, status, CSV); part 2 = charts + bottom bar |
+| M6 | Budgets, charts, CSV export, mobile polish | ✅ part 1 `0898b23`; part 2 (charts, bottom bar) built, commit pending |
 | M7 | Deploy to Vercel + Neon, production checks | ⏳ |
 
 Each milestone: build → tests → browser check → summary → user reviews → commit only when asked.
@@ -397,6 +398,29 @@ Each milestone: build → tests → browser check → summary → user reviews �
   `src/lib/csv.ts`: UTF-8 BOM, CRLF, RFC 4180 quoting, cells starting with `= + - @` (or tab / CR) get a leading `'`.
   `private, no-store`. Links: "Download CSV (Excel)" on search results and on the month's list.
 
+### 10.7 As built — M6 part 2 (charts, phone bottom bar)
+
+- Charts follow the dataviz guidelines: chart type first, colour last; one accent (`teal-600`, checked with the palette
+  validator against the white card: lightness, chroma and 3:1 contrast pass — `teal-700` fails the chroma floor), grey
+  for context; columns ≤ 24 px with a 4 px rounded top and a 2 px gap; hairline grid; one ₹ axis (no dual axes);
+  selective value labels; a written summary under each title; "Show as table" (the accessible twin); tooltips on
+  hover **and** keyboard focus that only repeat what's written elsewhere.
+- Drawn on the server by our own components (no chart library) from HTML boxes rather than SVG shapes, so text and bar
+  widths stay sharp at every phone width; only the tooltip (`components/chart-tips.tsx`) runs in the browser.
+- Maths in `src/lib/charts.ts` (unit-tested): `niceScale` (1/2/2.5/5 × 10ⁿ rupee steps, ~4 steps), `compactRupees`
+  (₹2.5K, ₹1.2L, ₹1Cr), `dailyTotals`, `isDayTick` (1, 5, 10 … last).
+- **By category** (B3 spend by category, the user's choice): each row is a bar on one ₹ scale shared by all rows
+  (the biggest spend or budget fills the width); with a budget, a dark tick marks it and the fill takes the status
+  colour; the words underneath stay.
+- **Day by day**: a column per day (`components/column-chart.tsx`); the highest day labelled; days with spending link
+  to that day's search; summary "Highest … · on average … a day (so far)". Built from the month's expenses (no extra query).
+- **Last 6 months**: `reports.monthTrend` (6 months, empty ones at 0) + `budgets.familyTotalBudgets`; this month in
+  teal, earlier months grey and linking to their month, family budget as a dark tick, legend; summary compares with
+  the month before.
+- **Bottom bar** (`components/bottom-nav.tsx`, client for `usePathname`): phones only (`sm:hidden`), fixed, safe-area
+  padding, `aria-current="page"`; the header keeps the family switcher; `main` gets `pb-24` and `scroll-padding-bottom`
+  keeps focused fields clear of the bar.
+
 ## 11. Decision log
 
 | Date | Decision |
@@ -409,5 +433,5 @@ Each milestone: build → tests → browser check → summary → user reviews �
 | 2026-10-21 | English only. Money stored in paise. "Today" = India time. |
 | 2026-10-21 | Keep Next.js Cache Components on; read the session per request, cache nothing per user. Database sessions (hashed token) so password changes can sign out other devices. |
 | 2026-10-22 | Search filters live in the address (GET form) so searches can be bookmarked and Back works; first visit shows no results until "Search". Monthly breakdown rows link to the matching search. |
-| 2026-10-22 | M6 in two parts (1: budgets, status, CSV · 2: charts, phone bottom bar). Charts as inline SVG drawn on the server (no chart library). "Fill in from last month" fills the boxes without saving. Budgets up to ₹1,00,00,000. One CSV Route Handler serves both search and month downloads. |
+| 2026-10-22 | M6 in two parts (1: budgets, status, CSV · 2: charts, phone bottom bar). Charts drawn on the server by our own components, no chart library (built from HTML boxes, not SVG shapes, so text stays sharp on phones). The category rows themselves become the category chart (bars on one scale with budget ticks) instead of a second list. "Fill in from last month" fills the boxes without saving. Budgets up to ₹1,00,00,000. One CSV Route Handler serves both search and month downloads. |
 | 2026-10-21 | Receipts stored in PostgreSQL (not Vercel Blob): one system, private, transactional. Shared limit 500 MB of Neon's 1 GB; site admin (`ADMIN_USERNAMES`) can switch new receipts off on `/admin`. Deleting an expense removes its receipt. |

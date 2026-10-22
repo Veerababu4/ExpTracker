@@ -1,5 +1,5 @@
 import "server-only";
-import { and, asc, eq, inArray, isNull } from "drizzle-orm";
+import { and, asc, between, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/server/db";
 import { budgets, categories } from "@/server/db/schema";
 import { isBudgetMonth } from "@/lib/rules/budget";
@@ -46,6 +46,23 @@ export async function monthBudget(viewerId: string, familyId: string, month: Iso
       r.categoryId === null ? [] : [{ categoryId: r.categoryId, name: r.name ?? "", hidden: r.hidden ?? false, paise: r.paise }],
     ),
   };
+}
+
+/** The family total budget of each month from `first` to `last` that has one (month → paise); any member. */
+export async function familyTotalBudgets(
+  viewerId: string,
+  familyId: string,
+  first: IsoMonth,
+  last: IsoMonth,
+): Promise<Map<IsoMonth, number>> {
+  await assertMember(viewerId, familyId);
+  const rows = await db
+    .select({ month: budgets.month, paise: budgets.amountPaise })
+    .from(budgets)
+    .where(
+      and(eq(budgets.familyId, familyId), isNull(budgets.categoryId), between(budgets.month, firstDay(first), firstDay(last))),
+    );
+  return new Map(rows.map((r) => [r.month.slice(0, 7), r.paise]));
 }
 
 export type BudgetResult = { ok: true; changed: number } | { ok: false; reason: "month_not_allowed" | "bad_category" };

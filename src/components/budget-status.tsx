@@ -1,5 +1,5 @@
 import { formatRupees } from "@/lib/money";
-import type { BudgetLevel, BudgetStatus } from "@/lib/rules/budget";
+import { budgetStatus, type BudgetLevel, type BudgetStatus } from "@/lib/rules/budget";
 
 // Budget status on the monthly view (DESIGN §3.6 B2). The words always say what the colour shows, so nothing
 // depends on seeing amber or red.
@@ -11,6 +11,40 @@ const textColour: Record<BudgetLevel, string> = { ok: "text-zinc-600", near: "te
 export function budgetText(status: BudgetStatus, budgetPaise: number): string {
   if (status.level === "over") return `Over budget by ${formatRupees(status.overPaise)}`;
   return `${status.percent}% of ${formatRupees(budgetPaise)} budget · ${formatRupees(status.leftPaise)} left`;
+}
+
+/**
+ * One category's bar on the monthly view (B2 + B3): spending on a scale shared by every row, so the bars compare
+ * at a glance; with a budget, a dark tick marks it on the same scale, the fill takes the status colour and the
+ * words underneath say how much is used or over.
+ */
+export function SpendBar({ spentPaise, budgetPaise, scalePaise }: { spentPaise: number; budgetPaise: number | null; scalePaise: number }) {
+  const at = (paise: number) => Math.min(100, (paise / scalePaise) * 100);
+  const status = budgetPaise === null ? null : budgetStatus(spentPaise, budgetPaise);
+  return (
+    <div className="flex flex-col gap-1">
+      <div aria-hidden className="relative h-2 bg-zinc-100">
+        {spentPaise > 0 && (
+          <div
+            className={`h-full rounded-r-[4px] ${barColour[status?.level ?? "ok"]}`}
+            style={{ width: `max(2px, ${at(spentPaise)}%)` }}
+          />
+        )}
+        {budgetPaise !== null && (
+          <div
+            data-testid="budget-tick"
+            className="absolute -inset-y-1 w-0.5 -translate-x-1/2 rounded-full bg-zinc-800"
+            style={{ left: `${at(budgetPaise)}%` }}
+          />
+        )}
+      </div>
+      {status && budgetPaise !== null && (
+        <p data-level={status.level} className={`text-xs ${textColour[status.level]}`}>
+          {budgetText(status, budgetPaise)}
+        </p>
+      )}
+    </div>
+  );
 }
 
 export function BudgetStatusLine({

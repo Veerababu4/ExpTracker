@@ -4,7 +4,7 @@ import { db } from "@/server/db";
 import { auditLog, budgets } from "@/server/db/schema";
 import { resetDatabase } from "@/test/db";
 import { registerUser } from "./accounts";
-import { monthBudget, setMonthBudget } from "./budgets";
+import { familyTotalBudgets, monthBudget, setMonthBudget } from "./budgets";
 import { listCategories, setCategoryHidden } from "./categories";
 import { createFamily, decideJoinRequest, NotAllowedError, pendingRequests, requestToJoin } from "./families";
 
@@ -125,6 +125,22 @@ describe("setMonthBudget / monthBudget", () => {
     });
     expect((await monthBudget(head, familyId, "2026-10")).byCategory).toEqual([
       { categoryId: groceries, name: "Groceries", hidden: true, paise: 5_000_00 },
+    ]);
+  });
+});
+
+describe("familyTotalBudgets", () => {
+  it("gives the family total of each month in the range that has one; category budgets don't count", async () => {
+    const { head, member, familyId, groceries } = await setup();
+    await setMonthBudget(head, familyId, "2026-08", { totalPaise: 30_000_00, categories: {} }, TODAY);
+    await setMonthBudget(head, familyId, "2026-10", { totalPaise: 40_000_00, categories: { [groceries]: 9_000_00 } }, TODAY);
+    await setMonthBudget(head, familyId, "2026-09", { totalPaise: null, categories: { [groceries]: 8_000_00 } }, TODAY);
+    await setMonthBudget(head, familyId, "2026-11", { totalPaise: 50_000_00, categories: {} }, TODAY); // after the range
+
+    const totals = await familyTotalBudgets(member, familyId, "2026-05", "2026-10");
+    expect([...totals.entries()].sort()).toEqual([
+      ["2026-08", 30_000_00],
+      ["2026-10", 40_000_00],
     ]);
   });
 });

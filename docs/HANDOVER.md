@@ -1,6 +1,6 @@
 # Handover — Family Expenses
 
-*Updated 2026-10-22 (M5 in PR #5; M6 part 1 — budgets, status, CSV — built on `feature/m6-budgets`, not committed, waiting for review). Read this first when resuming; requirements and rules are in
+*Updated 2026-10-22 (M5 in PR #5; M6 part 1 committed `0898b23`; M6 part 2 — charts, phone bottom bar — built on `feature/m6-budgets`, not committed, waiting for review). Read this first when resuming; requirements and rules are in
 [`DESIGN.md`](DESIGN.md).*
 
 ## 0. Resume in one minute
@@ -9,14 +9,14 @@
    container `family-pg` starts with it.
 2. `cd C:\Veera\Work\family-expenses`, `git fetch`, `git status`, check the PRs below.
 3. `npm run dev` → http://localhost:3000 (development database `family`).
-4. Next work: the user reviews **M6 part 1** (DESIGN §10.6) → commit when asked; then **M6 part 2** (§5: charts +
-   phone bottom bar). PR #5 (M5) waits for the user to merge. `feature/m6-budgets` starts from `feature/m5-search`
+4. Next work: the user reviews **M6 part 2** (DESIGN §10.7) → commit when asked → M6 PR (ask before pushing); then
+   **M7** deploy (§5). PR #5 (M5) waits for the user to merge. `feature/m6-budgets` starts from `feature/m5-search`
    (`1d48bd0`): when PR #5 is merged, the M6 PR must target `main` (`gh pr create --base main`; if it was opened on
    the M5 branch, `gh pr edit <n> --base main`).
 
 ## 1. Status
 
-**Milestones 6/8 done** (M0–M5; M5 in PR #5; M6 part 1 built). Work milestone by milestone: build → tests → browser check → summary → the user
+**Milestones 6/8 done** (M0–M5; M5 in PR #5; M6 built: part 1 committed, part 2 waiting for review). Work milestone by milestone: build → tests → browser check → summary → the user
 reviews → commit only when asked → ask before every push.
 
 | # | Milestone | Commit | Branch | GitHub |
@@ -27,7 +27,7 @@ reviews → commit only when asked → ask before every push.
 | M3 | Expenses | `a763aad` | `feature/m3-expenses` | PR #3 merged → `main` = `fdbf15b` |
 | M4 | Receipts + site admin | `883b51e` | `feature/m4-receipts` | PR #4 merged → `main` = `c89e096` |
 | M5 | Search + monthly view | `c2763c3` | `feature/m5-search` (from `c89e096`) | PR #5 open |
-| M6 | Budgets, charts, CSV | part 1 not committed | `feature/m6-budgets` (from `1d48bd0`) | part 1 built, waiting for review |
+| M6 | Budgets, charts, CSV | part 1 `0898b23`; part 2 not committed | `feature/m6-budgets` (from `1d48bd0`) | not pushed |
 | M7 | Deploy (Vercel + Neon) | — | — | |
 
 - Repo: https://github.com/Veerababu4/ExpTracker (**public**). PRs: https://github.com/Veerababu4/ExpTracker/pulls
@@ -51,8 +51,8 @@ reviews → commit only when asked → ask before every push.
 
 | Command | What | Last result |
 |---|---|---|
-| `npm test` | Vitest: unit + database tests (rebuilds `family_test`) | 172/172 |
-| `npm run e2e` | build + Playwright in Microsoft Edge, desktop + 390 px phone, `next start -p 3100` on `family_test` | 80/80 (~6 min) |
+| `npm test` | Vitest: unit + database tests (rebuilds `family_test`) | 182/182 |
+| `npm run e2e` | build + Playwright in Microsoft Edge, desktop + 390 px phone, `next start -p 3100` on `family_test` | 86/86 (~7 min) |
 | `npm run lint` · `npm run typecheck` · `npm run build` | | clean |
 
 - **Never run `npm test` and the E2E suite at the same time** — both use `family_test` and the Vitest setup drops it.
@@ -84,9 +84,10 @@ src/server/services/*.ts  business rules ("@Service"): accounts, families, expen
                           budgets, audit
 src/server/auth/*.ts      session cookie, requireUser(), requireFamily(), isSiteAdmin()
 src/server/db/            Drizzle schema, client, SQL migrations 0000–0004
-src/lib/                  shared pure code: rules (dates, alerts, join-code, receipts, budget), money, csv,
+src/lib/                  shared pure code: rules (dates, alerts, join-code, receipts, budget), money, csv, charts,
                           validation (Zod), formatting
-src/components/           UI pieces incl. expense-form, receipt-picker (browser-side photo shrinking)
+src/components/           UI pieces incl. expense-form, receipt-picker (browser-side photo shrinking), column-chart +
+                          chart-tips (tooltip), budget-status (bars), bottom-nav (phones)
 e2e/                      Playwright specs + helpers
 ```
 
@@ -94,21 +95,15 @@ Key rules live in pure, unit-tested files: `src/lib/rules/dates.ts` (India "toda
 `src/lib/rules/alerts.ts`, `src/lib/rules/receipts.ts` (limits, file-type sniffing), `src/lib/rules/budget.ts`
 (allowed months, 80% / 100% status), `src/lib/csv.ts` (Excel-safe CSV), `src/lib/money.ts` (paise).
 
-## 5. Next: M6 part 2 — charts and phone polish (DESIGN §3.6 B3)
+## 5. Next: M7 — deploy to Vercel + Neon (DESIGN §10, §7)
 
-Part 1 (budgets, budget status, CSV) is built — see DESIGN §10.6. Agreed with the user (2026-10-22): **inline SVG
-charts** drawn by our own server components (no chart library), and M6 in two parts with a review between.
+M6 is built (DESIGN §10.6 part 1, §10.7 part 2). Plan for M7, to confirm with the user before starting:
 
-1. **Charts (B3)** on the monthly view: spend by category (horizontal bars, budget mark where set), daily spend for
-   the month (columns, one per day), last 6 months trend (columns or line, with the family budget where set). **Load
-   the `dataviz` skill before writing any chart code.** Needs a service for daily totals and 6-month totals
-   (`reports.ts`). Text alternatives: each chart has a title and a short summary / table for screen readers.
-2. **Mobile polish**: bottom bar on phones (Add · Month · Search · Family) instead of the top links; check 360 px on
-   every page (budget page, month page with charts).
-3. Tests: unit tests for chart maths (scales, ticks, bar sizes), DB tests for the new report queries, E2E for the
-   charts' presence/summaries and the bottom bar, phone-width overflow checks.
-
-After M6: M7 deploy (Vercel + Neon, security headers/CSP, `npm audit`, `ADMIN_USERNAMES` on Vercel, re-check free tiers).
+1. Neon project (free tier) → production `DATABASE_URL`; run the migrations 0000–0004 against it.
+2. Vercel project from the GitHub repo (Hobby); env vars `DATABASE_URL`, `SESSION_SECRET`, `ADMIN_USERNAMES`.
+3. Security headers / CSP (note: the budget and admin bars use inline `style` widths — see §7), `npm audit`.
+4. Re-check the free tiers (Neon storage vs the 500 MB receipt limit, Vercel function limits) and the health check.
+5. Smoke test on the live site (register, family, expense, receipt, budget, month charts, CSV) on a phone.
 
 ## 6. Open questions for the user
 
@@ -119,6 +114,10 @@ After M6: M7 deploy (Vercel + Neon, security headers/CSP, `npm audit`, `ADMIN_US
 - **"Family created" banner** stays on the family page until you navigate away (minor).
 - **Members' header after approval**: a member's header updates on their next full page load after the head approves
   them (layouts are kept during in-app navigation).
+- **M6 part 2 choices** (confirm in review): the charts are drawn from HTML boxes (not SVG shapes) by our own server
+  components — still no chart library, as agreed; the 6-month chart shows the page's month in teal and earlier months
+  grey; the daily chart labels only the highest day; on phones the four page links moved from the header to the
+  bottom bar (wider screens unchanged).
 - **M6 part 1 choices** (confirm in review): "Fill in from last month" fills the boxes without saving (the head checks,
   then presses Save); budgets up to ₹1,00,00,000; members who open `/family/budget` see a note, not the amounts (they see
   the status on the month page); categories with a budget but nothing spent show at ₹0; the CSV has one row per expense
@@ -161,6 +160,9 @@ After M6: M7 deploy (Vercel + Neon, security headers/CSP, `npm audit`, `ADMIN_US
 - **For M7 (CSP)**: the budget bars (`components/budget-status.tsx`) and the admin storage bar set their width with an
   inline `style` attribute — the Content-Security-Policy must allow it (`style-src 'unsafe-inline'`, which Next.js
   needs anyway) or those bars must move to SVG `width` attributes.
+- `/month` forwards to `/month/<yyyy-mm>` only after the page has loaded (a redirect inside a streamed page), so a
+  test that measures or scrolls the page must open `/month/<yyyy-mm>` directly ("Execution context was destroyed").
+- Full-page screenshots draw the fixed bottom bar where the viewport was, mid-page — that's the screenshot, not a bug.
 - Budget boxes on `/family/budget` are controlled inputs (React state), so they survive the form action's reset and
   "Fill in from …" can set them; the form is keyed by month so each month starts fresh.
 - Screenshot helpers (session scratchpad): `start-3200.ps1` (`next start -p 3200` on `family_test`, reads
