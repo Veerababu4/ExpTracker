@@ -1,6 +1,6 @@
 # Handover — Family Expenses
 
-*Updated 2026-10-22 (M5 merged — `main` = `5079e17`; M6 committed on `feature/m6-budgets`, PR into `main` opened for review; M7 deploy next). Read this first when resuming; requirements and rules are in
+*Updated 2026-10-22 (M0–M6 merged; M7: the site is live at https://exptracker1.vercel.app on Neon + Vercel; hardening — security headers, Singapore region — committed `8e67a54` on `feature/m7-deploy`, PR into `main` open). Read this first when resuming; requirements and rules are in
 [`DESIGN.md`](DESIGN.md).*
 
 ## 0. Resume in one minute
@@ -9,8 +9,11 @@
    container `family-pg` starts with it.
 2. `cd C:\Veera\Work\family-expenses`, `git fetch`, `git status`, check the PRs below.
 3. `npm run dev` → http://localhost:3000 (development database `family`).
-4. Next work: the M6 PR (`feature/m6-budgets` → `main`) waits for the user to merge; then **M7** deploy (§5) —
-   confirm the plan with the user first (accounts, secrets, going public).
+4. Next work: finish **M7** (§5): the user merges the M7 PR → Vercel deploys `main` → check the live headers and region
+   (`curl -sI https://exptracker1.vercel.app/login`), then the phone smoke test.
+5. Live site: **https://exptracker1.vercel.app** (health: `/api/health`). Vercel project imported from GitHub —
+   every merge to `main` deploys; deployment/preview URLs need a Vercel login (Deployment Protection), the production
+   domain is public.
 
 ## 1. Status
 
@@ -26,7 +29,7 @@ reviews → commit only when asked → ask before every push.
 | M4 | Receipts + site admin | `883b51e` | `feature/m4-receipts` | PR #4 merged → `main` = `c89e096` |
 | M5 | Search + monthly view | `c2763c3` | `feature/m5-search` (from `c89e096`) | PR #5 merged → `main` = `5079e17` |
 | M6 | Budgets, charts, CSV | part 1 `0898b23`, part 2 `bd1f479` | `feature/m6-budgets` (from `1d48bd0`) | PR into `main` open |
-| M7 | Deploy (Vercel + Neon) | — | — | |
+| M7 | Deploy (Vercel + Neon) | `8e67a54` | `feature/m7-deploy` (from `4235f25`) | PR into `main` open; site live at exptracker1.vercel.app |
 
 - Repo: https://github.com/Veerababu4/ExpTracker (**public**). PRs: https://github.com/Veerababu4/ExpTracker/pulls
 - The repo has `delete_branch_on_merge=false`: stacked PRs need `gh pr edit <n> --base main` after the lower one
@@ -44,13 +47,16 @@ reviews → commit only when asked → ask before every push.
 | Site admin | `ADMIN_USERNAMES=<your username>` in `.env.local` (comma-separated) → header link **Admin** → `/admin`. Not set yet locally; in production set it in Vercel (M7). |
 | Migrations | edit `src/server/db/schema.ts` → `npm run db:generate` → review the SQL → `npm run db:migrate` (dev DB). Tests rebuild `family_test` from the migration files each run. Dev DB is at `0004_budgets`. |
 | Logins | none seeded — register in the browser. Dev DB has no users/families. |
+| **Production** | https://exptracker1.vercel.app · Vercel project (GitHub import, functions `sin1` via `vercel.json`) · Neon project `family-expenses` (AWS Singapore, PostgreSQL 18, db `neondb`). Env vars in Vercel (Production + Preview): `DATABASE_URL` (pooled), `SESSION_SECRET`, `ADMIN_USERNAMES`. |
+| Production secrets | git-ignored **`.env.vercel`** in the project folder (`DATABASE_URL` pooled, `MIGRATION_DATABASE_URL` direct, `SESSION_SECRET`, `ADMIN_USERNAMES`). Never print it; check it with a script that reports only its shape. Not named `.env.production.local` on purpose — Next.js would load that in local builds. |
+| Production migrations | after a new migration is merged: run `drizzle-kit migrate` with `DATABASE_URL` set to `MIGRATION_DATABASE_URL` (direct address) **and** `NODE_OPTIONS=--import ./scripts/dns-public.mjs` (router DNS quirk, §7): `scripts\prod-migrate.ps1` does both; `node --no-warnings --import ./scripts/dns-public.mjs scripts/prod-check.mjs` lists tables / migrations / row counts read-only. Neon is at `0004_budgets`. |
 
 ## 3. Tests and checks (all must pass before reporting a milestone)
 
 | Command | What | Last result |
 |---|---|---|
 | `npm test` | Vitest: unit + database tests (rebuilds `family_test`) | 182/182 |
-| `npm run e2e` | build + Playwright in Microsoft Edge, desktop + 390 px phone, `next start -p 3100` on `family_test` | 86/86 (~7 min) |
+| `npm run e2e` | build + Playwright in Microsoft Edge, desktop + 390 px phone, `next start -p 3100` on `family_test` | 90/90 (~9 min) |
 | `npm run lint` · `npm run typecheck` · `npm run build` | | clean |
 
 - **Never run `npm test` and the E2E suite at the same time** — both use `family_test` and the Vitest setup drops it.
@@ -93,15 +99,20 @@ Key rules live in pure, unit-tested files: `src/lib/rules/dates.ts` (India "toda
 `src/lib/rules/alerts.ts`, `src/lib/rules/receipts.ts` (limits, file-type sniffing), `src/lib/rules/budget.ts`
 (allowed months, 80% / 100% status), `src/lib/csv.ts` (Excel-safe CSV), `src/lib/money.ts` (paise).
 
-## 5. Next: M7 — deploy to Vercel + Neon (DESIGN §10, §7)
+## 5. Next: finish M7 (DESIGN §10.8)
 
-M6 is built (DESIGN §10.6 part 1, §10.7 part 2). Plan for M7, to confirm with the user before starting:
+Done: security headers + CSP (`next.config.ts`), `vercel.json` (`sin1`), `e2e/security.spec.ts`, `npm audit` (0 in
+production packages), Neon project + tables (migrations 0000–0004), Vercel import + env vars, live site answering.
+Left:
 
-1. Neon project (free tier) → production `DATABASE_URL`; run the migrations 0000–0004 against it.
-2. Vercel project from the GitHub repo (Hobby); env vars `DATABASE_URL`, `SESSION_SECRET`, `ADMIN_USERNAMES`.
-3. Security headers / CSP (note: the budget and admin bars use inline `style` widths — see §7), `npm audit`.
-4. Re-check the free tiers (Neon storage vs the 500 MB receipt limit, Vercel function limits) and the health check.
-5. Smoke test on the live site (register, family, expense, receipt, budget, month charts, CSV) on a phone.
+1. ✅ The user registered as `veera`; `ADMIN_USERNAMES=veera` is set in Vercel (and recorded in `.env.vercel`).
+2. ✅ `feature/m7-deploy` committed (`8e67a54`), PR open → merge
+   → Vercel deploys `main`: check the live CSP/headers with `curl -sI https://exptracker1.vercel.app/login` and that
+   responses are fast (functions now next to the database).
+3. Smoke test on a phone: register/login, family, expense with a receipt photo, budget, month charts, CSV download.
+
+After M7 (ideas, not planned): own domain; Neon branch for previews instead of sharing the production database;
+backups (Neon free keeps 6 hours of history — a periodic `pg_dump` from the laptop would be safer for real data).
 
 ## 6. Open questions for the user
 
@@ -112,6 +123,8 @@ M6 is built (DESIGN §10.6 part 1, §10.7 part 2). Plan for M7, to confirm with 
 - **"Family created" banner** stays on the family page until you navigate away (minor).
 - **Members' header after approval**: a member's header updates on their next full page load after the head approves
   them (layouts are kept during in-app navigation).
+- **M7 choices** (confirm in review): previews share the production database (fine for a demo); PostgreSQL 18 on Neon
+  vs 17 locally (nothing in the app differs); no uptime monitor (Neon free compute hours).
 - **M6 part 2 choices** (confirm in review): the charts are drawn from HTML boxes (not SVG shapes) by our own server
   components — still no chart library, as agreed; the 6-month chart shows the page's month in teal and earlier months
   grey; the daily chart labels only the highest day; on phones the four page links moved from the header to the
@@ -163,6 +176,13 @@ M6 is built (DESIGN §10.6 part 1, §10.7 part 2). Plan for M7, to confirm with 
 - Full-page screenshots draw the fixed bottom bar where the viewport was, mid-page — that's the screenshot, not a bug.
 - Budget boxes on `/family/budget` are controlled inputs (React state), so they survive the form action's reset and
   "Fill in from …" can set them; the form is keyed by month so each month starts fresh.
+- **Home router DNS refuses `*.neon.tech`** ("DNS operation refused" / Node `ENOTFOUND`; Google 1.1.1.1/8.8.8.8 resolve
+  them fine). Local tools that talk to Neon preload `scripts/dns-public.mjs` (`--import`): it resolves only
+  `*.neon.tech` through 1.1.1.1/8.8.8.8, IPv4, for that process — no Windows settings changed. Vercel is unaffected.
+- `pg` prints a "SECURITY WARNING: The SSL modes 'prefer', 'require' … aliases for 'verify-full'" for Neon's
+  `sslmode=require` — harmless (today it means the strictest check); silence with `--no-warnings` in local scripts.
+- Vercel Deployment Protection: `curl` on a deployment URL (`exp-tracker-<hash>-veera-1e66.vercel.app`) gets a 302 to
+  Vercel login — test the production domain instead.
 - Screenshot helpers (session scratchpad): `start-3200.ps1` (`next start -p 3200` on `family_test`, reads
   `TEST_DATABASE_URL` without printing it) + `shots-m5.mjs` / `shots-m6a.mjs`. Stop the 3200 server before `npm test`.
 

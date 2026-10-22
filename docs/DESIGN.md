@@ -1,6 +1,6 @@
 # Family Expenses — Design
 
-*Version 0.8 · 2026-10-22 · M6*
+*Version 0.9 · 2026-10-22 · M7*
 
 A website where a family records its day-to-day expenses, looks at any month, searches between dates and
 tracks a monthly budget. Built for personal/family use (non-commercial), hosted for free.
@@ -246,7 +246,15 @@ sideways scrolling.
 - Authorisation in one place (`src/server/auth` + services): every action loads the membership from the database
   and checks role + date window. Requests for another family's data return "not found".
 - Next.js Server Actions already reject cross-site posts (origin check). All input validated with Zod on the server.
-- Security headers (CSP, frame-ancestors none, referrer policy, etc.) set in `next.config.ts`.
+- Security headers set in `next.config.ts` (as built in M7): a Content-Security-Policy without nonces (nonces need
+  every page rendered per request, which Partial Prerendering's static shells can't do — Next.js CSP guide): scripts,
+  styles, fonts and connections only from this site (`'unsafe-inline'` for Next's inline bootstrap and the bars'
+  style widths), images also `blob:`/`data:`, `object-src 'none'`, `base-uri`/`form-action 'self'`,
+  `frame-ancestors 'none'`; plus `X-Frame-Options: DENY`, `nosniff`, `Referrer-Policy: strict-origin-when-cross-origin`,
+  a `Permissions-Policy` turning off camera/mic/location/payment/USB, and HSTS. `/receipts/…` gets everything except
+  the page CSP (it would stop the browser's PDF viewer); it sets its own headers.
+- `npm audit`: 0 known vulnerabilities in the packages the live site runs; the findings are all in developer tools
+  (`drizzle-kit`, `eslint-config-next`) whose "fix" is a downgrade by several major versions — not applied.
 - Lockouts for login and recovery (A5, A7). Errors shown to users never include stack traces or SQL.
 - Receipts: the file type is read from the file's first bytes (not its name or the browser's label); served with
   the stored type, `X-Content-Type-Options: nosniff`, `Cache-Control: private, no-store`, and photos with
@@ -270,10 +278,17 @@ sideways scrolling.
 
 | | Local | Production (M7) |
 |---|---|---|
-| App | `npm run dev` → http://localhost:3000 | Vercel Hobby, `*.vercel.app` (custom domain optional) |
-| Database | Docker container `family-pg` (postgres:17-alpine, port **5434**, volume `family-pg-data`) — separate from `vihan-pg` | Neon free, region near India |
-| Config | `.env.local` (git-ignored); template in `.env.example` | Vercel environment variables |
+| App | `npm run dev` → http://localhost:3000 | Vercel Hobby (free): **https://exptracker1.vercel.app**; functions in Singapore (`sin1`, `vercel.json`); every merge to `main` deploys; PRs get private preview links |
+| Database | Docker container `family-pg` (postgres:17-alpine, port **5434**, volume `family-pg-data`) — separate from `vihan-pg` | Neon free: project `family-expenses`, AWS Singapore (`ap-southeast-1`), PostgreSQL 18, database `neondb`; the app uses the pooled (`-pooler`) address |
+| Config | `.env.local` (git-ignored); template in `.env.example` | Vercel environment variables (Production + Preview): `DATABASE_URL`, `SESSION_SECRET`, `ADMIN_USERNAMES`. The values live in the git-ignored `.env.vercel` on the laptop, plus `MIGRATION_DATABASE_URL` (direct address, for migrations only) |
+| Migrations | `npm run db:migrate` (dev DB) | from the laptop with `MIGRATION_DATABASE_URL` (see HANDOVER §2) |
 | Site admin | `ADMIN_USERNAMES` in `.env.local` | `ADMIN_USERNAMES` in Vercel settings |
+
+Free-tier limits that shape the app (checked 2026-10-22 on neon.com): Neon free = 1 GB per project (writes are
+blocked at the limit, nothing is deleted — hence the 500 MB receipt cap), 100 compute-hours per project per month,
+compute sleeps after 5 minutes idle (first request after a quiet spell takes ~1–2 s). **No uptime pinger**: pinging
+every few minutes would keep the compute awake around the clock and use up the monthly hours. Vercel Hobby is free for
+personal, non-commercial use; requests are capped at 4.5 MB (receipts are at most 3 MB).
 
 ---
 
@@ -288,7 +303,7 @@ sideways scrolling.
 | M4 | Receipt photos and PDFs (in PostgreSQL, 500 MB shared limit), site admin page with receipts on/off | ✅ `883b51e` |
 | M5 | Search between dates + monthly view with totals | ✅ `c2763c3` |
 | M6 | Budgets, charts, CSV export, mobile polish | ✅ `0898b23` (part 1) + `bd1f479` (part 2) |
-| M7 | Deploy to Vercel + Neon, production checks | ⏳ |
+| M7 | Deploy to Vercel + Neon, production checks | ✅ `8e67a54` — live at https://exptracker1.vercel.app |
 
 Each milestone: build → tests → browser check → summary → user reviews → commit only when asked.
 
@@ -421,6 +436,20 @@ Each milestone: build → tests → browser check → summary → user reviews �
   padding, `aria-current="page"`; the header keeps the family switcher; `main` gets `pb-24` and `scroll-padding-bottom`
   keeps focused fields clear of the bar.
 
+### 10.8 As built — M7 (deploy)
+
+- Security headers and CSP in `next.config.ts` (§7); `vercel.json` pins the functions to Singapore (`sin1`, next to
+  the Neon database — one function region on Hobby); `e2e/security.spec.ts` checks the headers and that no page logs
+  a CSP violation.
+- Neon: tables created from the laptop with `drizzle-kit migrate` over the direct address (Neon advises direct, not
+  pooled, connections for schema changes); the app's `DATABASE_URL` is the pooled address. The `pg` pool needs no
+  change (idle connections close after 10 s by default).
+- Vercel: project imported from GitHub; environment variables imported from `.env.vercel`; Deployment Protection
+  stays on (deployment and preview URLs need a Vercel login), the production domain `exptracker1.vercel.app` is public.
+- `scripts/prod-migrate.ps1` (migrations on Neon) and `scripts/prod-check.mjs` (read-only check) read the git-ignored
+  `.env.vercel` and never print it. Laptop quirk: the home router's DNS refuses `*.neon.tech` lookups, so both preload
+  `scripts/dns-public.mjs`, which resolves only those names through public DNS (HANDOVER §7). The live site is not affected.
+
 ## 11. Decision log
 
 | Date | Decision |
@@ -434,4 +463,5 @@ Each milestone: build → tests → browser check → summary → user reviews �
 | 2026-10-21 | Keep Next.js Cache Components on; read the session per request, cache nothing per user. Database sessions (hashed token) so password changes can sign out other devices. |
 | 2026-10-22 | Search filters live in the address (GET form) so searches can be bookmarked and Back works; first visit shows no results until "Search". Monthly breakdown rows link to the matching search. |
 | 2026-10-22 | M6 in two parts (1: budgets, status, CSV · 2: charts, phone bottom bar). Charts drawn on the server by our own components, no chart library (built from HTML boxes, not SVG shapes, so text stays sharp on phones). The category rows themselves become the category chart (bars on one scale with budget ticks) instead of a second list. "Fill in from last month" fills the boxes without saving. Budgets up to ₹1,00,00,000. One CSV Route Handler serves both search and month downloads. |
+| 2026-10-22 | M7: Neon + Vercel functions in Singapore; Vercel imported from GitHub (no CLI); CSP without nonces (keeps Partial Prerendering); no uptime pinger (Neon free compute hours); secrets only in Vercel and the git-ignored `.env.vercel`. |
 | 2026-10-21 | Receipts stored in PostgreSQL (not Vercel Blob): one system, private, transactional. Shared limit 500 MB of Neon's 1 GB; site admin (`ADMIN_USERNAMES`) can switch new receipts off on `/admin`. Deleting an expense removes its receipt. |
