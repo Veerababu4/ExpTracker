@@ -13,7 +13,7 @@ import { EARLIEST_DATE, firstOfMonth, todayInIndia } from "@/lib/rules/dates";
 import { NO_CATEGORY, pageNumber, searchSchema } from "@/lib/validation/search";
 import { requireFamily } from "@/server/auth/family";
 import { listCategories } from "@/server/services/categories";
-import { familyPeople, searchExpenses } from "@/server/services/reports";
+import { exportHref, familyPeople, searchExpenses } from "@/server/services/reports";
 
 export const metadata: Metadata = { title: "Search · Family Expenses" };
 
@@ -101,9 +101,16 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
 
       {result && parsed?.success && (
         <Card title="Results" id="results" note={`${formatIsoDate(parsed.data.from)} – ${formatIsoDate(parsed.data.to)}`}>
-          <p data-testid="search-summary" className="mb-3 text-sm font-medium">
-            {result.count} {result.count === 1 ? "expense" : "expenses"} · {formatRupees(result.totalPaise)}
-          </p>
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+            <p data-testid="search-summary" className="text-sm font-medium">
+              {result.count} {result.count === 1 ? "expense" : "expenses"} · {formatRupees(result.totalPaise)}
+            </p>
+            {result.count > 0 && (
+              <a href={exportHref(family.familyId, values)} download className="text-sm font-medium text-teal-700 hover:underline">
+                Download CSV (Excel)
+              </a>
+            )}
+          </div>
           <ExpenseList
             expenses={result.expenses}
             showDate

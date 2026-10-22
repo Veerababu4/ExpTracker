@@ -1,6 +1,6 @@
 # Family Expenses — Design
 
-*Version 0.6 · 2026-10-22 · M5*
+*Version 0.7 · 2026-10-22 · M6 part 1*
 
 A website where a family records its day-to-day expenses, looks at any month, searches between dates and
 tracks a monthly budget. Built for personal/family use (non-commercial), hosted for free.
@@ -201,7 +201,7 @@ All ids are UUIDs; all tables have `created_at`; times are `timestamptz` (UTC); 
 | `join_requests` | id, family_id, user_id, status (PENDING/APPROVED/REJECTED/CANCELLED), decided_by?, decided_at? | partial unique index → one PENDING per (family, user) |
 | `categories` | id, family_id, name, hidden, sort_order | unique (family_id, lower(name)); defaults copied in when a family is created |
 | `expenses` | id, family_id, owner_id, expense_date, amount_paise, currency, category_id?, payment_mode?, note?, created_by, updated_by?, updated_at?, deleted_at?, deleted_by? | index (family_id, expense_date) where not deleted; check amount 100..100000000 |
-| `budgets` | family_id, month (1st of month), category_id? (null = family total), amount_paise, set_by, updated_at | unique (family_id, month, category_id) `NULLS NOT DISTINCT` |
+| `budgets` | id, family_id, month (1st of month), category_id? (null = family total), amount_paise, set_by, updated_at | unique (family_id, month, category_id) `NULLS NOT DISTINCT`; checks: month is the 1st, amount ₹1 – ₹1,00,00,000; no row = no budget |
 | `receipts` | id, family_id, expense_id (unique), content_type, size_bytes, data (bytea), created_by | one per expense; checks: type is JPG/PNG/WebP/PDF, 1 B – 2 MB, size = length of data |
 | `app_settings` | key, value jsonb, updated_by?, updated_at | site switches, e.g. `receipts_enabled` (missing = on) |
 | `audit_log` | id, family_id?, actor_id, action, entity_type, entity_id, before jsonb?, after jsonb?, at | expense changes, approvals, role/limit/category/budget changes, password resets |
@@ -221,12 +221,13 @@ scripts); `npm run db:migrate` applies them.
 | `/expenses/new` | member | add form + the day's entries (home page after login) |
 | `/expenses/[id]` | member | view / edit / delete / receipt / change log (head) |
 | `/receipts/[id]` | member of that family | the receipt file (Route Handler; others get "not found") |
-| `/month`, `/month/[yyyy-mm]` | member | monthly view: total, totals by category / member / payment mode (each links to the matching search), list; budget + charts in M6. `/month` → current month |
-| `/search` | member | date range search; filters in the address (`?from=…&to=…&member=…&category=…&mode=…&page=…`) |
+| `/month`, `/month/[yyyy-mm]` | member | monthly view: total and budget status, totals by category (with category budgets) / member / payment mode (each links to the matching search), list, CSV download; charts in M6 part 2. `/month` → current month |
+| `/search` | member | date range search; filters in the address (`?from=…&to=…&member=…&category=…&mode=…&page=…`); CSV download of the whole result |
+| `/export/expenses` | member of that family | CSV file (Route Handler) for `?family=…` + the search fields; others get "not found" |
 | `/family` | member | members, join code (head), requests (head), create member login (head), transfer head, leave/remove |
 | `/family/limits` | head (members read own) | alert limits |
 | `/family/categories` | head | categories |
-| `/family/budget` | head | budgets |
+| `/family/budget` | head (members see a note) | budgets: `?month=yyyy-mm`, 2 months back to 12 ahead |
 | `/account` | user | profile, change password, security questions, my families, logout |
 | `/admin` | site admin | receipt space, receipts on/off |
 
@@ -285,7 +286,7 @@ Layout: mobile first (most entries happen on phones). Header nav (all widths, as
 | M3 | Expenses: add/edit/delete with date windows, categories, payment mode, note, high-value alerts + per-member limits, change log | ✅ `a763aad` |
 | M4 | Receipt photos and PDFs (in PostgreSQL, 500 MB shared limit), site admin page with receipts on/off | ✅ `883b51e` |
 | M5 | Search between dates + monthly view with totals | ✅ `c2763c3` |
-| M6 | Budgets, charts, CSV export, mobile polish | ⏳ |
+| M6 | Budgets, charts, CSV export, mobile polish | 🟡 part 1 built (budgets, status, CSV); part 2 = charts + bottom bar |
 | M7 | Deploy to Vercel + Neon, production checks | ⏳ |
 
 Each milestone: build → tests → browser check → summary → user reviews → commit only when asked.
@@ -371,6 +372,31 @@ Each milestone: build → tests → browser check → summary → user reviews �
   "Go to month" picker; breakdown rows link to the search for that month (the range stops at today).
 - Former members (F9) now show as "Name (former member)" in lists, the expense page and the member filter.
 
+### 10.6 As built — M6 part 1 (budgets, budget status, CSV)
+
+- Migration `0004_budgets.sql`: `budgets` (see §5). A blank box deletes the row, so "no budget" is simply no row.
+- Rules: `src/lib/rules/budget.ts` — `budgetMonths(today)` (2 back … 12 ahead), `budgetStatus(spent, budget)` in whole
+  paise (below 80% `ok`; 80% up to and including 100% `near` = amber; one paisa over = `over` = red, with the amount
+  over), `categoryBudgetsOverTotal`. `MAX_BUDGET_PAISE` = ₹1,00,00,000 (expenses stay at most ₹10,00,000 each).
+- Validation `src/lib/validation/budget.ts`: the form has `total` and one `cat_<category id>` box per category; empty =
+  no budget; a tampered field name is refused. `amountField` / `optionalAmountField` take a maximum.
+- Service `budgets.ts`: `monthBudget` (any member), `setMonthBudget` (head; allowed months; categories must belong to
+  the family — hidden ones allowed so an old budget can be cleared; categories not in the form keep their budget;
+  writes only the changes and one `BUDGET_CHANGED` audit row listing each before/after; nothing changed = no row).
+- `/family/budget`: month picker limited to the allowed months; one line per category (name + ₹ box), two columns on
+  wide screens; a box for each visible category plus hidden ones that still have a budget. "Fill in from <last month>"
+  copies last month's amounts into the boxes **without saving** (the head checks, then saves). A live note when the
+  category budgets add up to more than the family total.
+- Monthly view: bar + words under the month total ("85% of ₹2,000.00 budget · ₹300.00 left" / "Over budget by ₹X";
+  the words never rely on colour) and on each category row; categories with a budget but no spending are listed at
+  ₹0; the note when category budgets add up to more than the total; "Set a budget for … →" / "Change the budget →"
+  for the head while the month can still be budgeted.
+- CSV (B4): `GET /export/expenses?family=…&from=…&to=…[&member&category&mode]` (Route Handler) — same `searchSchema` as
+  `/search`, membership checked (not a member → 404, logged out → 401), every matching row oldest first, no pages.
+  Columns Date (YYYY-MM-DD), Member, Category, Payment mode, Amount (₹) as a plain number, Note, Receipt (Yes).
+  `src/lib/csv.ts`: UTF-8 BOM, CRLF, RFC 4180 quoting, cells starting with `= + - @` (or tab / CR) get a leading `'`.
+  `private, no-store`. Links: "Download CSV (Excel)" on search results and on the month's list.
+
 ## 11. Decision log
 
 | Date | Decision |
@@ -383,4 +409,5 @@ Each milestone: build → tests → browser check → summary → user reviews �
 | 2026-10-21 | English only. Money stored in paise. "Today" = India time. |
 | 2026-10-21 | Keep Next.js Cache Components on; read the session per request, cache nothing per user. Database sessions (hashed token) so password changes can sign out other devices. |
 | 2026-10-22 | Search filters live in the address (GET form) so searches can be bookmarked and Back works; first visit shows no results until "Search". Monthly breakdown rows link to the matching search. |
+| 2026-10-22 | M6 in two parts (1: budgets, status, CSV · 2: charts, phone bottom bar). Charts as inline SVG drawn on the server (no chart library). "Fill in from last month" fills the boxes without saving. Budgets up to ₹1,00,00,000. One CSV Route Handler serves both search and month downloads. |
 | 2026-10-21 | Receipts stored in PostgreSQL (not Vercel Blob): one system, private, transactional. Shared limit 500 MB of Neon's 1 GB; site admin (`ADMIN_USERNAMES`) can switch new receipts off on `/admin`. Deleting an expense removes its receipt. |

@@ -8,7 +8,7 @@ import { registerUser } from "./accounts";
 import { listCategories } from "./categories";
 import { addExpense, deleteExpense } from "./expenses";
 import { createFamily, decideJoinRequest, leaveFamily, NotAllowedError, pendingRequests, requestToJoin } from "./families";
-import { familyPeople, monthSummary, PAGE_SIZE, searchExpenses } from "./reports";
+import { exportExpenses, exportHref, familyPeople, monthSummary, PAGE_SIZE, searchExpenses } from "./reports";
 
 const TODAY = "2026-10-21"; // head window: 1 Aug – 21 Oct
 
@@ -153,5 +153,31 @@ describe("familyPeople", () => {
       { userId: head, displayName: "RAVI", former: false },
       { userId: member, displayName: "SITA", former: true },
     ]);
+  });
+});
+
+describe("exportExpenses", () => {
+  it("gives every matching expense oldest first (no pages), with the search's filters; deleted ones left out", async () => {
+    const { head, member, familyId, groceries } = await setup();
+    const late = await add(head, familyId, { expenseDate: "2026-10-09", amount: 300_00, categoryId: groceries });
+    const early = await add(member, familyId, { expenseDate: "2026-10-02", amount: 100_00, categoryId: groceries });
+    await add(member, familyId, { expenseDate: "2026-10-05", amount: 200_00 }); // other category
+    const gone = await add(head, familyId, { expenseDate: "2026-10-03", amount: 999_00, categoryId: groceries });
+    await deleteExpense(head, familyId, gone, TODAY);
+
+    expect((await exportExpenses(member, familyId, october({ category: groceries }))).map((e) => e.id)).toEqual([early, late]);
+    expect(await exportExpenses(head, familyId, october())).toHaveLength(3);
+  });
+
+  it("only for members of the family", async () => {
+    const { familyId } = await setup();
+    const outsider = await user("arun");
+    await expect(exportExpenses(outsider, familyId, october())).rejects.toBeInstanceOf(NotAllowedError);
+  });
+
+  it("exportHref keeps the filled-in fields only", () => {
+    expect(exportHref("f-1", { from: "2026-10-01", to: "2026-10-21", member: "", category: "none", mode: "" })).toBe(
+      "/export/expenses?family=f-1&from=2026-10-01&to=2026-10-21&category=none",
+    );
   });
 });

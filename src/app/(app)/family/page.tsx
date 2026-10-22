@@ -140,6 +140,14 @@ export default async function FamilyPage({ searchParams }: { searchParams: Promi
               <span className="text-zinc-500">add, rename or hide expense categories</span>
             </li>
           )}
+          {isHead && (
+            <li>
+              <Link href="/family/budget" className="font-medium text-teal-700 hover:underline">
+                Budget →
+              </Link>{" "}
+              <span className="text-zinc-500">monthly budget for the family and per category</span>
+            </li>
+          )}
           <li>
             <Link href="/family/limits" className="font-medium text-teal-700 hover:underline">
               {isHead ? "Alert limits →" : "Your alert limits →"}

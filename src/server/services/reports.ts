@@ -58,6 +58,22 @@ export async function searchExpenses(viewerId: string, familyId: string, filters
   return { expenses: rows.map(toView), count: summary.count, totalPaise: Number(summary.paise), page: current, pages };
 }
 
+/** Every expense matching a search, oldest first (no pages), for the CSV download (DESIGN §3.6 B4). */
+export async function exportExpenses(viewerId: string, familyId: string, filters: SearchFilters): Promise<ExpenseView[]> {
+  await assertMember(viewerId, familyId);
+  const rows = await viewQuery()
+    .where(filtersWhere(familyId, filters))
+    .orderBy(asc(expenses.expenseDate), asc(expenses.createdAt), asc(expenses.id));
+  return rows.map(toView);
+}
+
+/** Address of the CSV download for a search (the same fields as /search; empty ones are left out). */
+export function exportHref(familyId: string, filters: Partial<Record<"from" | "to" | "member" | "category" | "mode", string>>): string {
+  const params = new URLSearchParams({ family: familyId });
+  for (const [name, value] of Object.entries(filters)) if (value) params.set(name, value);
+  return `/export/expenses?${params}`;
+}
+
 export type Group<K> = { key: K; name: string | null; paise: number; count: number };
 
 export type MonthSummary = {

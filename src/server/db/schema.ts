@@ -15,6 +15,7 @@ import {
   smallint,
   text,
   timestamp,
+  unique,
   uniqueIndex,
   uuid,
   type AnyPgColumn,
@@ -239,3 +240,29 @@ export const appSettings = pgTable("app_settings", {
   updatedBy: uuid("updated_by").references(() => users.id, { onDelete: "set null" }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+// ── M6: budgets ───────────────────────────────────────────────────────────────
+
+/** Monthly budgets set by the head (DESIGN §3.6 B1): category null = the family total. No row = no budget. */
+export const budgets = pgTable(
+  "budgets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    familyId: uuid("family_id")
+      .notNull()
+      .references(() => families.id, { onDelete: "cascade" }),
+    month: date("month", { mode: "string" }).notNull(), // always the 1st: "2026-10-01"
+    categoryId: uuid("category_id").references(() => categories.id),
+    amountPaise: bigint("amount_paise", { mode: "number" }).notNull(),
+    setBy: uuid("set_by")
+      .notNull()
+      .references(() => users.id),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // One family total and one budget per category per month (null categories count as equal).
+    unique("budgets_family_month_category").on(t.familyId, t.month, t.categoryId).nullsNotDistinct(),
+    check("budgets_first_of_month", sql`extract(day from ${t.month}) = 1`),
+    check("budgets_amount_range", sql`${t.amountPaise} between 100 and 1000000000`),
+  ],
+);
