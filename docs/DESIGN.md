@@ -287,7 +287,7 @@ sideways scrolling.
 | M3 | Expenses: add/edit/delete with date windows, categories, payment mode, note, high-value alerts + per-member limits, change log | ✅ `a763aad` |
 | M4 | Receipt photos and PDFs (in PostgreSQL, 500 MB shared limit), site admin page with receipts on/off | ✅ `883b51e` |
 | M5 | Search between dates + monthly view with totals | ✅ `c2763c3` |
-| M6 | Budgets, charts, CSV export, mobile polish | ✅ part 1 `0898b23`; part 2 (charts, bottom bar) built, commit pending |
+| M6 | Budgets, charts, CSV export, mobile polish | ✅ `0898b23` (part 1) + `bd1f479` (part 2) |
 | M7 | Deploy to Vercel + Neon, production checks | ⏳ |
 
 Each milestone: build → tests → browser check → summary → user reviews → commit only when asked.

@@ -1,6 +1,6 @@
 # Handover — Family Expenses
 
-*Updated 2026-10-22 (M5 in PR #5; M6 part 1 committed `0898b23`; M6 part 2 — charts, phone bottom bar — built on `feature/m6-budgets`, not committed, waiting for review). Read this first when resuming; requirements and rules are in
+*Updated 2026-10-22 (M5 merged — `main` = `5079e17`; M6 committed on `feature/m6-budgets`, PR into `main` opened for review; M7 deploy next). Read this first when resuming; requirements and rules are in
 [`DESIGN.md`](DESIGN.md).*
 
 ## 0. Resume in one minute
@@ -9,14 +9,12 @@
    container `family-pg` starts with it.
 2. `cd C:\Veera\Work\family-expenses`, `git fetch`, `git status`, check the PRs below.
 3. `npm run dev` → http://localhost:3000 (development database `family`).
-4. Next work: the user reviews **M6 part 2** (DESIGN §10.7) → commit when asked → M6 PR (ask before pushing); then
-   **M7** deploy (§5). PR #5 (M5) waits for the user to merge. `feature/m6-budgets` starts from `feature/m5-search`
-   (`1d48bd0`): when PR #5 is merged, the M6 PR must target `main` (`gh pr create --base main`; if it was opened on
-   the M5 branch, `gh pr edit <n> --base main`).
+4. Next work: the M6 PR (`feature/m6-budgets` → `main`) waits for the user to merge; then **M7** deploy (§5) —
+   confirm the plan with the user first (accounts, secrets, going public).
 
 ## 1. Status
 
-**Milestones 6/8 done** (M0–M5; M5 in PR #5; M6 built: part 1 committed, part 2 waiting for review). Work milestone by milestone: build → tests → browser check → summary → the user
+**Milestones 7/8 done** (M0–M6; M6 in its PR). Work milestone by milestone: build → tests → browser check → summary → the user
 reviews → commit only when asked → ask before every push.
 
 | # | Milestone | Commit | Branch | GitHub |
@@ -26,14 +24,14 @@ reviews → commit only when asked → ask before every push.
 | M2 | Families | `0fc7b66` | `feature/m2-families` | PR #2 merged |
 | M3 | Expenses | `a763aad` | `feature/m3-expenses` | PR #3 merged → `main` = `fdbf15b` |
 | M4 | Receipts + site admin | `883b51e` | `feature/m4-receipts` | PR #4 merged → `main` = `c89e096` |
-| M5 | Search + monthly view | `c2763c3` | `feature/m5-search` (from `c89e096`) | PR #5 open |
-| M6 | Budgets, charts, CSV | part 1 `0898b23`; part 2 not committed | `feature/m6-budgets` (from `1d48bd0`) | not pushed |
+| M5 | Search + monthly view | `c2763c3` | `feature/m5-search` (from `c89e096`) | PR #5 merged → `main` = `5079e17` |
+| M6 | Budgets, charts, CSV | part 1 `0898b23`, part 2 `bd1f479` | `feature/m6-budgets` (from `1d48bd0`) | PR into `main` open |
 | M7 | Deploy (Vercel + Neon) | — | — | |
 
 - Repo: https://github.com/Veerababu4/ExpTracker (**public**). PRs: https://github.com/Veerababu4/ExpTracker/pulls
 - The repo has `delete_branch_on_merge=false`: stacked PRs need `gh pr edit <n> --base main` after the lower one
   merges. After a merge, `git fetch origin main:main` (fast-forward local `main`).
-- Local `main` = `origin/main` = `c89e096` (checked with `git rev-parse main origin/main`).
+- Local `main` = `origin/main` = `5079e17` (checked with `git rev-parse main` / `origin/main`).
 
 ## 2. Running it
 
