@@ -15,6 +15,13 @@ export function formatIsoDate(date: string): string {
   return isoDateFormat.format(new Date(`${date}T00:00:00Z`));
 }
 
+const monthFormat = new Intl.DateTimeFormat("en-IN", { timeZone: "UTC", month: "long", year: "numeric" });
+
+/** "2026-10" → "October 2026" */
+export function formatMonth(month: string): string {
+  return monthFormat.format(new Date(`${month}-01T00:00:00Z`));
+}
+
 /** "2026-10-21" → "Wed, 21 Oct" */
 export function formatIsoDay(date: string): string {
   return isoDayFormat.format(new Date(`${date}T00:00:00Z`));

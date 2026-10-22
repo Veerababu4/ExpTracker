@@ -82,6 +82,8 @@ async function Header() {
               |
             </span>
             <NavLink href="/">Add</NavLink>
+            <NavLink href="/month">Month</NavLink>
+            <NavLink href="/search">Search</NavLink>
             <NavLink href="/family">Family</NavLink>
             {adminLink}
           </nav>

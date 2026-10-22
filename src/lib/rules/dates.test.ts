@@ -7,6 +7,11 @@ import {
   isInWindow,
   isIsoDate,
   todayInIndia,
+  addMonths,
+  isIsoMonth,
+  monthOf,
+  monthRange,
+  rangeDays,
 } from "./dates";
 
 describe("todayInIndia", () => {
@@ -62,5 +67,31 @@ describe("editWindow", () => {
     expect(isInWindow("2026-10-21", w)).toBe(true);
     expect(isInWindow("2026-09-30", w)).toBe(false);
     expect(isInWindow("2026-10-22", w)).toBe(false);
+  });
+});
+
+describe("months", () => {
+  it("recognises YYYY-MM", () => {
+    expect(isIsoMonth("2026-10")).toBe(true);
+    expect(isIsoMonth("2026-13")).toBe(false);
+    expect(isIsoMonth("2026-1")).toBe(false);
+    expect(isIsoMonth("2026-10-01")).toBe(false);
+  });
+
+  it("moves across year boundaries", () => {
+    expect(monthOf("2026-10-21")).toBe("2026-10");
+    expect(addMonths("2026-12", 1)).toBe("2027-01");
+    expect(addMonths("2026-01", -1)).toBe("2025-12");
+  });
+
+  it("knows the last day of each month, leap years included", () => {
+    expect(monthRange("2026-10")).toEqual({ from: "2026-10-01", to: "2026-10-31" });
+    expect(monthRange("2024-02")).toEqual({ from: "2024-02-01", to: "2024-02-29" });
+    expect(monthRange("2026-02")).toEqual({ from: "2026-02-01", to: "2026-02-28" });
+  });
+
+  it("counts both ends of a range", () => {
+    expect(rangeDays({ from: "2026-10-21", to: "2026-10-21" })).toBe(1);
+    expect(rangeDays({ from: "2024-01-01", to: "2024-12-31" })).toBe(366);
   });
 });

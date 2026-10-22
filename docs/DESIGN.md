@@ -1,6 +1,6 @@
 # Family Expenses — Design
 
-*Version 0.5 · 2026-10-21 · M4*
+*Version 0.6 · 2026-10-22 · M5*
 
 A website where a family records its day-to-day expenses, looks at any month, searches between dates and
 tracks a monthly budget. Built for personal/family use (non-commercial), hosted for free.
@@ -221,8 +221,8 @@ scripts); `npm run db:migrate` applies them.
 | `/expenses/new` | member | add form + the day's entries (home page after login) |
 | `/expenses/[id]` | member | view / edit / delete / receipt / change log (head) |
 | `/receipts/[id]` | member of that family | the receipt file (Route Handler; others get "not found") |
-| `/month/[yyyy-mm]` | member | monthly view (budget, totals, charts, list) |
-| `/search` | member | date range search |
+| `/month`, `/month/[yyyy-mm]` | member | monthly view: total, totals by category / member / payment mode (each links to the matching search), list; budget + charts in M6. `/month` → current month |
+| `/search` | member | date range search; filters in the address (`?from=…&to=…&member=…&category=…&mode=…&page=…`) |
 | `/family` | member | members, join code (head), requests (head), create member login (head), transfer head, leave/remove |
 | `/family/limits` | head (members read own) | alert limits |
 | `/family/categories` | head | categories |
@@ -230,8 +230,9 @@ scripts); `npm run db:migrate` applies them.
 | `/account` | user | profile, change password, security questions, my families, logout |
 | `/admin` | site admin | receipt space, receipts on/off |
 
-Layout: mobile first (most entries happen on phones). Bottom bar on phones: **Add · Month · Search · Family**; top bar
-with family switcher and account menu. Works from 360 px wide with no sideways scrolling.
+Layout: mobile first (most entries happen on phones). Header nav (all widths, as built in M5): family name/switcher ·
+**Add · Month · Search · Family** (· Admin); top-right: account and log out. A bottom bar on phones is part of M6
+"mobile polish". Works from 360 px wide with no sideways scrolling.
 
 ---
 
@@ -283,7 +284,7 @@ with family switcher and account menu. Works from 360 px wide with no sideways s
 | M2 | Families: create, join code, requests + approval, head-created logins, password reset by head, switcher, transfer head, remove/leave | ✅ `0fc7b66` |
 | M3 | Expenses: add/edit/delete with date windows, categories, payment mode, note, high-value alerts + per-member limits, change log | ✅ `a763aad` |
 | M4 | Receipt photos and PDFs (in PostgreSQL, 500 MB shared limit), site admin page with receipts on/off | ✅ `883b51e` |
-| M5 | Search between dates + monthly view with totals | ⏳ |
+| M5 | Search between dates + monthly view with totals | ✅ `c2763c3` |
 | M6 | Budgets, charts, CSV export, mobile polish | ⏳ |
 | M7 | Deploy to Vercel + Neon, production checks | ⏳ |
 
@@ -354,6 +355,22 @@ Each milestone: build → tests → browser check → summary → user reviews �
 - Pages: add form has the receipt field; `/expenses/[id]` has a Receipt card (photo inline / PDF link, add, replace,
   remove); lists show "📎 Receipt"; `/admin` (header link "Admin" for site admins only; others get "not found").
 
+### 10.5 As built — M5 (search + monthly view)
+
+- No migration: the `expenses_family_date` index (family, date, live rows) serves both pages.
+- Rules: `src/lib/rules/dates.ts` month helpers (`monthRange`, `addMonths`, `rangeDays`, `EARLIEST_DATE`,
+  `MAX_RANGE_DAYS = 366` counting both ends); `src/lib/validation/search.ts` (`searchSchema(today)`; category
+  `none` = Uncategorised; tampered filter values refused).
+- Service `reports.ts`: `searchExpenses` (50 per page, newest first, count + total of the whole result in one
+  aggregate, a page past the end shows the last page), `monthSummary` (GROUP BY category / owner / payment mode,
+  biggest first, full list), `familyPeople` (member filter incl. former members). Lists reuse `viewQuery()` from
+  `expenses.ts`.
+- `/search`: `next/form` GET form (client-side navigation, works without JavaScript too). First visit = form with the
+  1st of this month → today and no results. "Clear" resets. Pager "← Newer / Older →" keeps the filters.
+- `/month/[yyyy-mm]`: months from Jan 2000 to the current one (others → not found); ← previous / next → / This month /
+  "Go to month" picker; breakdown rows link to the search for that month (the range stops at today).
+- Former members (F9) now show as "Name (former member)" in lists, the expense page and the member filter.
+
 ## 11. Decision log
 
 | Date | Decision |
@@ -365,4 +382,5 @@ Each milestone: build → tests → browser check → summary → user reviews �
 | 2026-10-21 | Budgets: head sets family total + optional per category; overspending allowed and highlighted. |
 | 2026-10-21 | English only. Money stored in paise. "Today" = India time. |
 | 2026-10-21 | Keep Next.js Cache Components on; read the session per request, cache nothing per user. Database sessions (hashed token) so password changes can sign out other devices. |
+| 2026-10-22 | Search filters live in the address (GET form) so searches can be bookmarked and Back works; first visit shows no results until "Search". Monthly breakdown rows link to the matching search. |
 | 2026-10-21 | Receipts stored in PostgreSQL (not Vercel Blob): one system, private, transactional. Shared limit 500 MB of Neon's 1 GB; site admin (`ADMIN_USERNAMES`) can switch new receipts off on `/admin`. Deleting an expense removes its receipt. |
