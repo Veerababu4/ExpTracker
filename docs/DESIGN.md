@@ -1,6 +1,6 @@
 # Family Expenses — Design
 
-*Version 0.9 · 2026-10-22 · M7*
+*Version 1.0 · 2026-10-22 · all milestones done*
 
 A website where a family records its day-to-day expenses, looks at any month, searches between dates and
 tracks a monthly budget. Built for personal/family use (non-commercial), hosted for free.
@@ -303,7 +303,7 @@ personal, non-commercial use; requests are capped at 4.5 MB (receipts are at mos
 | M4 | Receipt photos and PDFs (in PostgreSQL, 500 MB shared limit), site admin page with receipts on/off | ✅ `883b51e` |
 | M5 | Search between dates + monthly view with totals | ✅ `c2763c3` |
 | M6 | Budgets, charts, CSV export, mobile polish | ✅ `0898b23` (part 1) + `bd1f479` (part 2) |
-| M7 | Deploy to Vercel + Neon, production checks | ✅ `8e67a54` — live at https://exptracker1.vercel.app |
+| M7 | Deploy to Vercel + Neon, production checks | ✅ `8e67a54` (merged `ba733fb`) — live at https://exptracker1.vercel.app |
 
 Each milestone: build → tests → browser check → summary → user reviews → commit only when asked.
 

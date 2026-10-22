@@ -1,6 +1,6 @@
 # Handover — Family Expenses
 
-*Updated 2026-10-22 (M0–M6 merged; M7: the site is live at https://exptracker1.vercel.app on Neon + Vercel; hardening — security headers, Singapore region — committed `8e67a54` on `feature/m7-deploy`, PR into `main` open). Read this first when resuming; requirements and rules are in
+*Updated 2026-10-22, project wrapped up: all milestones M0–M7 merged (`main` = `ba733fb`), live at https://exptracker1.vercel.app (Vercel + Neon, Singapore), phone test done. Read this first when resuming; requirements and rules are in
 [`DESIGN.md`](DESIGN.md).*
 
 ## 0. Resume in one minute
@@ -9,15 +9,14 @@
    container `family-pg` starts with it.
 2. `cd C:\Veera\Work\family-expenses`, `git fetch`, `git status`, check the PRs below.
 3. `npm run dev` → http://localhost:3000 (development database `family`).
-4. Next work: finish **M7** (§5): the user merges the M7 PR → Vercel deploys `main` → check the live headers and region
-   (`curl -sI https://exptracker1.vercel.app/login`), then the phone smoke test.
+4. Next work: none planned — the project is wrapped up. Ideas for later are in §5; open review points in §6.
 5. Live site: **https://exptracker1.vercel.app** (health: `/api/health`). Vercel project imported from GitHub —
    every merge to `main` deploys; deployment/preview URLs need a Vercel login (Deployment Protection), the production
    domain is public.
 
 ## 1. Status
 
-**Milestones 7/8 done** (M0–M6; M6 in its PR). Work milestone by milestone: build → tests → browser check → summary → the user
+**Milestones 8/8 done** (M0–M7, all merged). Work milestone by milestone: build → tests → browser check → summary → the user
 reviews → commit only when asked → ask before every push.
 
 | # | Milestone | Commit | Branch | GitHub |
@@ -29,12 +28,13 @@ reviews → commit only when asked → ask before every push.
 | M4 | Receipts + site admin | `883b51e` | `feature/m4-receipts` | PR #4 merged → `main` = `c89e096` |
 | M5 | Search + monthly view | `c2763c3` | `feature/m5-search` (from `c89e096`) | PR #5 merged → `main` = `5079e17` |
 | M6 | Budgets, charts, CSV | part 1 `0898b23`, part 2 `bd1f479` | `feature/m6-budgets` (from `1d48bd0`) | PR into `main` open |
-| M7 | Deploy (Vercel + Neon) | `8e67a54` | `feature/m7-deploy` (from `4235f25`) | PR into `main` open; site live at exptracker1.vercel.app |
+| M7 | Deploy (Vercel + Neon) | `8e67a54` | `feature/m7-deploy` (from `4235f25`) | PR #7 merged → `main` = `ba733fb`; live at exptracker1.vercel.app |
 
 - Repo: https://github.com/Veerababu4/ExpTracker (**public**). PRs: https://github.com/Veerababu4/ExpTracker/pulls
 - The repo has `delete_branch_on_merge=false`: stacked PRs need `gh pr edit <n> --base main` after the lower one
   merges. After a merge, `git fetch origin main:main` (fast-forward local `main`).
-- Local `main` = `origin/main` = `5079e17` (checked with `git rev-parse main` / `origin/main`).
+- Local `main` = `origin/main` = `ba733fb` (checked with `git rev-parse main` / `origin/main`). Merged feature branches
+  (`feature/m1-…` to `feature/m7-deploy`) still exist locally and on GitHub; delete them only if the user asks.
 
 ## 2. Running it
 
@@ -99,20 +99,21 @@ Key rules live in pure, unit-tested files: `src/lib/rules/dates.ts` (India "toda
 `src/lib/rules/alerts.ts`, `src/lib/rules/receipts.ts` (limits, file-type sniffing), `src/lib/rules/budget.ts`
 (allowed months, 80% / 100% status), `src/lib/csv.ts` (Excel-safe CSV), `src/lib/money.ts` (paise).
 
-## 5. Next: finish M7 (DESIGN §10.8)
+## 5. After M7 — ideas, not planned
 
-Done: security headers + CSP (`next.config.ts`), `vercel.json` (`sin1`), `e2e/security.spec.ts`, `npm audit` (0 in
-production packages), Neon project + tables (migrations 0000–0004), Vercel import + env vars, live site answering.
-Left:
+M7 is done (DESIGN §10.8): security headers + CSP, functions in Singapore (`vercel.json`), production scripts,
+Neon tables (0000–0004), Vercel import + env vars (`ADMIN_USERNAMES=veera`). Checked live on 2026-10-22: all six
+security headers present, `/receipts/…` keeps its own headers, requests run `bom1` edge → `sin1` function, health in
+0.3–0.5 s; the user's phone test passed.
 
-1. ✅ The user registered as `veera`; `ADMIN_USERNAMES=veera` is set in Vercel (and recorded in `.env.vercel`).
-2. ✅ `feature/m7-deploy` committed (`8e67a54`), PR open → merge
-   → Vercel deploys `main`: check the live CSP/headers with `curl -sI https://exptracker1.vercel.app/login` and that
-   responses are fast (functions now next to the database).
-3. Smoke test on a phone: register/login, family, expense with a receipt photo, budget, month charts, CSV download.
-
-After M7 (ideas, not planned): own domain; Neon branch for previews instead of sharing the production database;
-backups (Neon free keeps 6 hours of history — a periodic `pg_dump` from the laptop would be safer for real data).
+Ideas if the project continues:
+- Own domain instead of `exptracker1.vercel.app`.
+- A Neon branch for Vercel preview deployments, instead of previews sharing the production database.
+- Backups: Neon free keeps only 6 hours of history — a periodic `pg_dump` from the laptop (through
+  `scripts/dns-public.mjs`) would be safer once real data matters.
+- Delete merged feature branches (only when the user asks).
+- Changing the schema later: `npm run db:generate` → review → tests → PR → merge → `scripts\prod-migrate.ps1`
+  (Neon) — run the migration before or right after the merge that needs it.
 
 ## 6. Open questions for the user
 
