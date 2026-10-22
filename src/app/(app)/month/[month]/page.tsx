@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Form from "next/form";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { BudgetStatusLine, SpendBar } from "@/components/budget-status";
 import { buttonClass } from "@/components/button-class";
 import { Card } from "@/components/card";
 import { ExpenseList } from "@/components/expense-list";
@@ -9,17 +10,22 @@ import { inputClass } from "@/components/form";
 import { PAYMENT_MODES, UNCATEGORISED } from "@/lib/expense-options";
 import { formatMonth } from "@/lib/format";
 import { formatRupees } from "@/lib/money";
+import { budgetStatus, categoryBudgetsOverTotal, isBudgetMonth } from "@/lib/rules/budget";
 import { addMonths, EARLIEST_DATE, isIsoMonth, monthOf, monthRange, todayInIndia } from "@/lib/rules/dates";
 import { NO_CATEGORY } from "@/lib/validation/search";
 import { requireFamily } from "@/server/auth/family";
-import { monthSummary, type Group } from "@/server/services/reports";
+import { familyTotalBudgets, monthBudget } from "@/server/services/budgets";
+import { exportHref, monthSummary, monthTrend, type Group } from "@/server/services/reports";
+import { DailyChart, TrendChart } from "./month-charts";
 
 export const metadata: Metadata = { title: "Month · Family Expenses" };
 
 const FIRST_MONTH = monthOf(EARLIEST_DATE);
 
 // Monthly view (DESIGN §3.5 S4): any month up to the current one — total, totals by category, member and
-// payment mode (each links to the matching search), and every expense. Budget status and charts come in M6.
+// payment mode (each links to the matching search), and every expense. With a budget (M6, §3.6 B2): how much of
+// the family total and of each category budget is used — amber from 80%, red above 100%. Charts (B3): the
+// category rows are bars on one shared scale, plus day-by-day and last-6-months column charts.
 export default async function MonthPage({ params }: { params: Promise<{ month: string }> }) {
   const { month } = await params;
   const { user, family } = await requireFamily();
@@ -27,12 +33,30 @@ export default async function MonthPage({ params }: { params: Promise<{ month: s
   const current = monthOf(today);
   if (!isIsoMonth(month) || month < FIRST_MONTH || month > current) notFound();
 
-  const s = await monthSummary(user.id, family.familyId, month);
+  const [s, budget, trend, trendBudgets] = await Promise.all([
+    monthSummary(user.id, family.familyId, month),
+    monthBudget(user.id, family.familyId, month),
+    monthTrend(user.id, family.familyId, month),
+    familyTotalBudgets(user.id, family.familyId, addMonths(month, -5), month),
+  ]);
   const { from, to: monthEnd } = monthRange(month);
   const to = monthEnd > today ? today : monthEnd; // search can't look past today
   const searchFor = (filter: Record<string, string>) => `/search?${new URLSearchParams({ from, to, ...filter })}`;
   const previous = addMonths(month, -1);
   const next = addMonths(month, 1);
+
+  const canSetBudget = family.role === "HEAD" && isBudgetMonth(month, today);
+  const categoryBudget = new Map(budget.byCategory.map((c) => [c.categoryId, c.paise]));
+  // Categories with a budget but no spending yet are listed too (at ₹0), after the ones with spending.
+  const spent = new Set(s.byCategory.map((g) => g.key));
+  const categoryGroups: Group<string | null>[] = [
+    ...s.byCategory,
+    ...budget.byCategory.filter((c) => !spent.has(c.categoryId)).map((c) => ({ key: c.categoryId, name: c.name, paise: 0, count: 0 })),
+  ];
+  const overTotal = categoryBudgetsOverTotal(budget.totalPaise, budget.byCategory.map((c) => c.paise));
+  const budgetOf = (g: Group<string | null>) => (g.key ? (categoryBudget.get(g.key) ?? null) : null);
+  // One scale for every category bar: the biggest spend or budget fills the width.
+  const categoryScale = Math.max(1, ...categoryGroups.map((g) => Math.max(g.paise, budgetOf(g) ?? 0)));
 
   return (
     <div className="flex flex-col gap-6">
@@ -85,20 +109,43 @@ export default async function MonthPage({ params }: { params: Promise<{ month: s
         <p className="text-sm text-zinc-600">
           {s.count} {s.count === 1 ? "expense" : "expenses"}
         </p>
+        {budget.totalPaise !== null && (
+          <div className="mt-4">
+            <BudgetStatusLine status={budgetStatus(s.totalPaise, budget.totalPaise)} budgetPaise={budget.totalPaise} testId="month-budget" thick />
+          </div>
+        )}
+        {canSetBudget && (
+          <Link href={`/family/budget?month=${month}`} className="mt-3 inline-block text-sm font-medium text-teal-700 hover:underline">
+            {budget.totalPaise !== null || budget.byCategory.length > 0 ? "Change the budget →" : `Set a budget for ${formatMonth(month)} →`}
+          </Link>
+        )}
       </section>
+
+      {categoryGroups.length > 0 && (
+        <Card
+          title="By category"
+          id="by-category"
+          note={
+            overTotal !== null && budget.totalPaise !== null
+              ? `Category budgets add up to ${formatRupees(overTotal)}, more than the family budget of ${formatRupees(budget.totalPaise)}.`
+              : undefined
+          }
+        >
+          <Totals
+            groups={categoryGroups}
+            total={s.totalPaise}
+            label={(g) => g.name ?? UNCATEGORISED}
+            href={(g) => searchFor({ category: g.key ?? NO_CATEGORY })}
+            bar={{ scalePaise: categoryScale, budget: budgetOf }}
+          />
+        </Card>
+      )}
+
+      {s.count > 0 && <DailyChart month={month} expenses={s.expenses} today={today} />}
+      {trend.some((t) => t.paise > 0) && <TrendChart month={month} trend={trend} budgets={trendBudgets} />}
 
       {s.count > 0 && (
         <div className="grid items-start gap-6 md:grid-cols-2">
-          <div className="md:col-span-2">
-            <Card title="By category" id="by-category">
-              <Totals
-                groups={s.byCategory}
-                total={s.totalPaise}
-                label={(g) => g.name ?? UNCATEGORISED}
-                href={(g) => searchFor({ category: g.key ?? NO_CATEGORY })}
-              />
-            </Card>
-          </div>
           <Card title="By member" id="by-member">
             <Totals
               groups={s.byMember}
@@ -118,25 +165,38 @@ export default async function MonthPage({ params }: { params: Promise<{ month: s
         </div>
       )}
 
-      <Card title="All expenses" id="list">
+      <Card
+        title="All expenses"
+        id="list"
+        note={
+          s.count > 0 ? (
+            <a href={exportHref(family.familyId, { from, to })} download className="font-medium text-teal-700 hover:underline">
+              Download CSV (Excel)
+            </a>
+          ) : undefined
+        }
+      >
         <ExpenseList expenses={s.expenses} showDate showOwner empty={`No expenses in ${formatMonth(month)}.`} />
       </Card>
     </div>
   );
 }
 
-/** One breakdown: name, amount, share of the month and count, biggest first. */
+/** One breakdown: name, amount, share of the month and count, biggest first; optionally a bar per row. */
 function Totals<G extends Group<unknown>>({
   groups,
   total,
   label,
   href,
+  bar,
 }: {
   groups: G[];
   total: number;
   label: (g: G) => string;
   /** Link to the matching search, or null when there's no filter for it. */
   href: (g: G) => string | null;
+  /** Draw each row as a bar on a shared scale, with the row's budget (or null for none). */
+  bar?: { scalePaise: number; budget: (g: G) => number | null };
 }) {
   // A list of flex rows, not a table: the name takes the free space (a table squeezed it to one letter on phones).
   return (
@@ -145,25 +205,28 @@ function Totals<G extends Group<unknown>>({
         const name = label(g);
         const link = href(g);
         return (
-          <li key={String(g.key)} className="flex items-center gap-3 py-2">
-            <div className="min-w-0 flex-1">
-              <p className="truncate font-medium">
-                {link ? (
-                  <Link href={link} className="text-zinc-900 hover:text-teal-700 hover:underline">
-                    {name}
-                  </Link>
-                ) : (
-                  name
-                )}
-              </p>
-              <p className="text-xs text-zinc-500">
-                {g.count} {g.count === 1 ? "expense" : "expenses"}
-              </p>
+          <li key={String(g.key)} className="flex flex-col gap-1.5 py-2">
+            <div className="flex items-center gap-3">
+              <div className="min-w-0 flex-1">
+                <p className="truncate font-medium">
+                  {link ? (
+                    <Link href={link} className="text-zinc-900 hover:text-teal-700 hover:underline">
+                      {name}
+                    </Link>
+                  ) : (
+                    name
+                  )}
+                </p>
+                <p className="text-xs text-zinc-500">
+                  {g.count} {g.count === 1 ? "expense" : "expenses"}
+                </p>
+              </div>
+              <span className="font-semibold whitespace-nowrap tabular-nums">{formatRupees(g.paise)}</span>
+              <span className="w-10 shrink-0 text-right text-zinc-500 tabular-nums" title="Share of the month">
+                {share(g.paise, total)}
+              </span>
             </div>
-            <span className="font-semibold whitespace-nowrap tabular-nums">{formatRupees(g.paise)}</span>
-            <span className="w-10 shrink-0 text-right text-zinc-500 tabular-nums" title="Share of the month">
-              {share(g.paise, total)}
-            </span>
+            {bar && <SpendBar spentPaise={g.paise} budgetPaise={bar.budget(g)} scalePaise={bar.scalePaise} />}
           </li>
         );
       })}

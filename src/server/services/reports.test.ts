@@ -8,7 +8,7 @@ import { registerUser } from "./accounts";
 import { listCategories } from "./categories";
 import { addExpense, deleteExpense } from "./expenses";
 import { createFamily, decideJoinRequest, leaveFamily, NotAllowedError, pendingRequests, requestToJoin } from "./families";
-import { familyPeople, monthSummary, PAGE_SIZE, searchExpenses } from "./reports";
+import { exportExpenses, exportHref, familyPeople, monthSummary, monthTrend, PAGE_SIZE, searchExpenses } from "./reports";
 
 const TODAY = "2026-10-21"; // head window: 1 Aug – 21 Oct
 
@@ -153,5 +153,61 @@ describe("familyPeople", () => {
       { userId: head, displayName: "RAVI", former: false },
       { userId: member, displayName: "SITA", former: true },
     ]);
+  });
+});
+
+describe("exportExpenses", () => {
+  it("gives every matching expense oldest first (no pages), with the search's filters; deleted ones left out", async () => {
+    const { head, member, familyId, groceries } = await setup();
+    const late = await add(head, familyId, { expenseDate: "2026-10-09", amount: 300_00, categoryId: groceries });
+    const early = await add(member, familyId, { expenseDate: "2026-10-02", amount: 100_00, categoryId: groceries });
+    await add(member, familyId, { expenseDate: "2026-10-05", amount: 200_00 }); // other category
+    const gone = await add(head, familyId, { expenseDate: "2026-10-03", amount: 999_00, categoryId: groceries });
+    await deleteExpense(head, familyId, gone, TODAY);
+
+    expect((await exportExpenses(member, familyId, october({ category: groceries }))).map((e) => e.id)).toEqual([early, late]);
+    expect(await exportExpenses(head, familyId, october())).toHaveLength(3);
+  });
+
+  it("only for members of the family", async () => {
+    const { familyId } = await setup();
+    const outsider = await user("arun");
+    await expect(exportExpenses(outsider, familyId, october())).rejects.toBeInstanceOf(NotAllowedError);
+  });
+
+  it("exportHref keeps the filled-in fields only", () => {
+    expect(exportHref("f-1", { from: "2026-10-01", to: "2026-10-21", member: "", category: "none", mode: "" })).toBe(
+      "/export/expenses?family=f-1&from=2026-10-01&to=2026-10-21&category=none",
+    );
+  });
+});
+
+describe("monthTrend", () => {
+  it("totals the 6 months ending with the given one, oldest first, empty months at 0; deleted and other families left out", async () => {
+    const { head, member, familyId } = await setup();
+    await add(head, familyId, { expenseDate: "2026-08-31", amount: 100_00 });
+    await add(member, familyId, { expenseDate: "2026-10-01", amount: 250_00 });
+    await add(head, familyId, { expenseDate: "2026-10-21", amount: 1_000_00 });
+    const gone = await add(head, familyId, { expenseDate: "2026-10-05", amount: 999_00 });
+    await deleteExpense(head, familyId, gone, TODAY);
+    const other = await user("gopal");
+    const { id: otherFamily } = await createFamily(other, "Rao family");
+    await addExpense(other, otherFamily, { expenseDate: "2026-10-02", amount: 777_00, note: undefined }, TODAY);
+
+    expect(await monthTrend(member, familyId, "2026-10")).toEqual([
+      { month: "2026-05", paise: 0, count: 0 },
+      { month: "2026-06", paise: 0, count: 0 },
+      { month: "2026-07", paise: 0, count: 0 },
+      { month: "2026-08", paise: 100_00, count: 1 },
+      { month: "2026-09", paise: 0, count: 0 },
+      { month: "2026-10", paise: 1_250_00, count: 2 },
+    ]);
+    expect((await monthTrend(head, familyId, "2026-01", 3)).map((m) => m.month)).toEqual(["2025-11", "2025-12", "2026-01"]);
+  });
+
+  it("only for members of the family", async () => {
+    const { familyId } = await setup();
+    const outsider = await user("arun");
+    await expect(monthTrend(outsider, familyId, "2026-10")).rejects.toBeInstanceOf(NotAllowedError);
   });
 });

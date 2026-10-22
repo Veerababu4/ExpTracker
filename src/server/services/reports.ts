@@ -3,7 +3,7 @@ import { and, asc, between, desc, eq, isNull, sql, type SQL } from "drizzle-orm"
 import { db } from "@/server/db";
 import { categories, expenses, familyMembers, users } from "@/server/db/schema";
 import type { PaymentMode } from "@/lib/expense-options";
-import { monthRange, type IsoMonth } from "@/lib/rules/dates";
+import { addMonths, monthRange, type IsoMonth } from "@/lib/rules/dates";
 import { NO_CATEGORY, type SearchFilters } from "@/lib/validation/search";
 import { toView, viewQuery, type ExpenseView } from "./expenses";
 import { assertMember } from "./families";
@@ -56,6 +56,22 @@ export async function searchExpenses(viewerId: string, familyId: string, filters
         .offset((current - 1) * PAGE_SIZE)
     : [];
   return { expenses: rows.map(toView), count: summary.count, totalPaise: Number(summary.paise), page: current, pages };
+}
+
+/** Every expense matching a search, oldest first (no pages), for the CSV download (DESIGN §3.6 B4). */
+export async function exportExpenses(viewerId: string, familyId: string, filters: SearchFilters): Promise<ExpenseView[]> {
+  await assertMember(viewerId, familyId);
+  const rows = await viewQuery()
+    .where(filtersWhere(familyId, filters))
+    .orderBy(asc(expenses.expenseDate), asc(expenses.createdAt), asc(expenses.id));
+  return rows.map(toView);
+}
+
+/** Address of the CSV download for a search (the same fields as /search; empty ones are left out). */
+export function exportHref(familyId: string, filters: Partial<Record<"from" | "to" | "member" | "category" | "mode", string>>): string {
+  const params = new URLSearchParams({ family: familyId });
+  for (const [name, value] of Object.entries(filters)) if (value) params.set(name, value);
+  return `/export/expenses?${params}`;
 }
 
 export type Group<K> = { key: K; name: string | null; paise: number; count: number };
@@ -125,6 +141,26 @@ export async function monthSummary(viewerId: string, familyId: string, month: Is
     byMode: byMode.map(toGroup),
     expenses: rows.map(toView),
   };
+}
+
+export type MonthTotal = { month: IsoMonth; paise: number; count: number };
+
+/** Spending per month for the `months` months ending with `month` (oldest first; months with nothing are 0). */
+export async function monthTrend(viewerId: string, familyId: string, month: IsoMonth, months = 6): Promise<MonthTotal[]> {
+  await assertMember(viewerId, familyId);
+  const first = addMonths(month, -(months - 1));
+  const monthOfDate = sql<string>`to_char(${expenses.expenseDate}, 'YYYY-MM')`;
+  const rows = await db
+    .select({ month: monthOfDate, ...countAndSum })
+    .from(expenses)
+    .where(and(live(familyId), between(expenses.expenseDate, monthRange(first).from, monthRange(month).to)))
+    .groupBy(monthOfDate);
+  const found = new Map(rows.map((r) => [r.month, r]));
+  return Array.from({ length: months }, (_, i) => {
+    const m = addMonths(first, i);
+    const r = found.get(m);
+    return { month: m, paise: Number(r?.paise ?? 0), count: r?.count ?? 0 };
+  });
 }
 
 export type Person = { userId: string; displayName: string; former: boolean };

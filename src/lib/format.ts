@@ -22,6 +22,14 @@ export function formatMonth(month: string): string {
   return monthFormat.format(new Date(`${month}-01T00:00:00Z`));
 }
 
+const shortMonthFormat = new Intl.DateTimeFormat("en-IN", { timeZone: "UTC", month: "short" });
+
+/** "2026-10" → "Oct"; January also shows its year ("2027-01" → "Jan ’27") so a chart crossing years stays clear. */
+export function formatShortMonth(month: string): string {
+  const name = shortMonthFormat.format(new Date(`${month}-01T00:00:00Z`));
+  return month.endsWith("-01") ? `${name} ’${month.slice(2, 4)}` : name;
+}
+
 /** "2026-10-21" → "Wed, 21 Oct" */
 export function formatIsoDay(date: string): string {
   return isoDayFormat.format(new Date(`${date}T00:00:00Z`));

@@ -2,34 +2,45 @@
 // service; here we check the shape of each field.
 import * as z from "zod";
 import { MAX_NOTE_LENGTH, PAYMENT_MODE_CODES } from "@/lib/expense-options";
-import { MAX_AMOUNT_PAISE, MIN_AMOUNT_PAISE, parseRupees } from "@/lib/money";
+import { formatRupees, MAX_AMOUNT_PAISE, MIN_AMOUNT_PAISE, parseRupees } from "@/lib/money";
 import { limitsProblem } from "@/lib/rules/alerts";
 import { isIsoDate } from "@/lib/rules/dates";
 
 const blankToUndefined = (v: string) => (v.trim() === "" ? undefined : v.trim());
 
+type IssueSink = { addIssue: (issue: { code: "custom"; message: string }) => void };
+
+/** Typed rupees → paise between ₹1 and `max`, or z.NEVER after adding the problem. */
+function toPaise(v: string, ctx: IssueSink, label: string, max: number): number {
+  const paise = parseRupees(v);
+  if (paise === null) {
+    ctx.addIssue({ code: "custom", message: "Enter an amount like 2500 or 2,500.50 (at most 2 decimals)." });
+    return z.NEVER;
+  }
+  if (paise < MIN_AMOUNT_PAISE) {
+    ctx.addIssue({ code: "custom", message: `${label} must be at least ₹1.` });
+    return z.NEVER;
+  }
+  if (paise > max) {
+    ctx.addIssue({ code: "custom", message: `${label} can be at most ${formatRupees(max).replace(/\.00$/, "")}.` });
+    return z.NEVER;
+  }
+  return paise;
+}
+
 /** Rupees as typed → paise. */
-export const amountField = (label = "Amount") =>
+export const amountField = (label = "Amount", max = MAX_AMOUNT_PAISE) =>
   z.string().transform((v, ctx) => {
     if (v.trim() === "") {
       ctx.addIssue({ code: "custom", message: `Enter the ${label.toLowerCase()}.` });
       return z.NEVER;
     }
-    const paise = parseRupees(v);
-    if (paise === null) {
-      ctx.addIssue({ code: "custom", message: "Enter an amount like 2500 or 2,500.50 (at most 2 decimals)." });
-      return z.NEVER;
-    }
-    if (paise < MIN_AMOUNT_PAISE) {
-      ctx.addIssue({ code: "custom", message: `${label} must be at least ₹1.` });
-      return z.NEVER;
-    }
-    if (paise > MAX_AMOUNT_PAISE) {
-      ctx.addIssue({ code: "custom", message: `${label} can be at most ₹10,00,000.` });
-      return z.NEVER;
-    }
-    return paise;
+    return toPaise(v, ctx, label, max);
   });
+
+/** Like amountField, but an empty box means "none" (null), e.g. a budget left blank. */
+export const optionalAmountField = (label: string, max = MAX_AMOUNT_PAISE) =>
+  z.string().transform((v, ctx) => (v.trim() === "" ? null : toPaise(v, ctx, label, max)));
 
 export const expenseSchema = z.object({
   expenseDate: z.string().refine(isIsoDate, { error: "Choose a valid date." }),

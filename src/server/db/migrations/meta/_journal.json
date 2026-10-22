@@ -29,6 +29,13 @@
       "when": 1792594771721,
       "tag": "0003_receipts",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1792652271882,
+      "tag": "0004_budgets",
+      "breakpoints": true
     }
   ]
 }
