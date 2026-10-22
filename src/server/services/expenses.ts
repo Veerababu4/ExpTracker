@@ -179,6 +179,8 @@ export type ExpenseView = {
   id: string;
   ownerId: string;
   ownerName: string;
+  /** The owner has left or was removed from the family (F9: shown as "(former member)"). */
+  ownerFormer: boolean;
   expenseDate: IsoDate;
   amountPaise: number;
   categoryId: string | null;
@@ -206,12 +208,14 @@ const viewColumns = {
   updatedAt: expenses.updatedAt,
   highAlertPaise: familyMembers.highAlertPaise,
   veryHighAlertPaise: familyMembers.veryHighAlertPaise,
+  ownerStatus: familyMembers.status,
   receiptId: receipts.id,
   receiptType: receipts.contentType,
   receiptSize: receipts.sizeBytes,
 };
 
-function viewQuery() {
+/** Expenses with everything a list shows (owner, category, limits, receipt info). Also used by reports.ts. */
+export function viewQuery() {
   return db
     .select(viewColumns)
     .from(expenses)
@@ -221,10 +225,11 @@ function viewQuery() {
     .leftJoin(receipts, eq(receipts.expenseId, expenses.id)); // never selects the file itself
 }
 
-function toView(row: Awaited<ReturnType<typeof viewQuery>>[number]): ExpenseView {
-  const { highAlertPaise, veryHighAlertPaise, receiptId, receiptType, receiptSize, ...rest } = row;
+export function toView(row: Awaited<ReturnType<typeof viewQuery>>[number]): ExpenseView {
+  const { highAlertPaise, veryHighAlertPaise, ownerStatus, receiptId, receiptType, receiptSize, ...rest } = row;
   return {
     ...rest,
+    ownerFormer: ownerStatus !== "ACTIVE",
     ownerLimits: effectiveLimits({ highAlertPaise, veryHighAlertPaise }),
     receipt: receiptId ? { id: receiptId, contentType: receiptType as ReceiptType, sizeBytes: receiptSize ?? 0 } : null,
   };

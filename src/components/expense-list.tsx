@@ -11,14 +11,18 @@ export function ExpenseList({
   showDate = false,
   showOwner = false,
   empty = "No expenses.",
+  total,
 }: {
   expenses: ExpenseView[];
   showDate?: boolean;
   showOwner?: boolean;
   empty?: string;
+  /** Count and total of a whole result when the list shows only one page of it. */
+  total?: { count: number; paise: number };
 }) {
   if (expenses.length === 0) return <p className="text-sm text-zinc-500">{empty}</p>;
-  const total = expenses.reduce((sum, e) => sum + e.amountPaise, 0);
+  const count = total?.count ?? expenses.length;
+  const paise = total?.paise ?? expenses.reduce((sum, e) => sum + e.amountPaise, 0);
   return (
     <div>
       <ul className="divide-y divide-zinc-100">
@@ -40,7 +44,7 @@ export function ExpenseList({
                 <p className="truncate text-xs text-zinc-500">
                   {[
                     showDate && formatIsoDay(e.expenseDate),
-                    showOwner && e.ownerName,
+                    showOwner && ownerLabel(e),
                     e.paymentMode && PAYMENT_MODES[e.paymentMode],
                     e.receipt && "📎 Receipt",
                     e.note,
@@ -56,10 +60,15 @@ export function ExpenseList({
       </ul>
       <p className="mt-2 flex justify-between border-t border-zinc-200 pt-2 text-sm font-semibold">
         <span>
-          Total ({expenses.length} {expenses.length === 1 ? "expense" : "expenses"})
+          Total ({count} {count === 1 ? "expense" : "expenses"})
         </span>
-        <span className="tabular-nums">{formatRupees(total)}</span>
+        <span className="tabular-nums">{formatRupees(paise)}</span>
       </p>
     </div>
   );
+}
+
+/** "Sita", or "Sita (former member)" once she has left or been removed (DESIGN F9). */
+export function ownerLabel(e: Pick<ExpenseView, "ownerName" | "ownerFormer">): string {
+  return e.ownerFormer ? `${e.ownerName} (former member)` : e.ownerName;
 }

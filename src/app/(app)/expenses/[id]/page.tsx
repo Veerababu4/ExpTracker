@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Card } from "@/components/card";
 import { ExpenseForm } from "@/components/expense-form";
+import { ownerLabel } from "@/components/expense-list";
 import { PAYMENT_MODES, UNCATEGORISED, type PaymentMode } from "@/lib/expense-options";
 import { formatDateTime, formatIsoDate } from "@/lib/format";
 import { formatRupees, paiseToInput } from "@/lib/money";
@@ -54,7 +55,7 @@ export default async function ExpensePage({ params }: { params: Promise<{ id: st
         </h1>
         <p className="text-sm text-zinc-600">
           {expense.categoryName ?? UNCATEGORISED} · {formatIsoDate(expense.expenseDate)} · added by{" "}
-          {isOwn ? "you" : expense.ownerName}
+          {isOwn ? "you" : ownerLabel(expense)}
         </p>
       </div>
 
@@ -97,7 +98,7 @@ export default async function ExpensePage({ params }: { params: Promise<{ id: st
             <dt className="text-zinc-500">Note</dt>
             <dd className="break-words">{expense.note ?? "—"}</dd>
             <dt className="text-zinc-500">Added by</dt>
-            <dd>{expense.ownerName}</dd>
+            <dd>{ownerLabel(expense)}</dd>
           </dl>
           <p className="mt-4 rounded-lg bg-zinc-100 px-3 py-2 text-sm text-zinc-700">
             {whyNot === "outside_window"

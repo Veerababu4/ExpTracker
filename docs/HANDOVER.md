@@ -1,6 +1,6 @@
 # Handover — Family Expenses
 
-*Updated 2026-10-21 (M4 committed, PR #4 open). Read this first when resuming; requirements and rules are in
+*Updated 2026-10-22, end of day (M5 built on `feature/m5-search`, not committed; one layout fix still to verify — see step 4). Read this first when resuming; requirements and rules are in
 [`DESIGN.md`](DESIGN.md).*
 
 ## 0. Resume in one minute
@@ -9,11 +9,15 @@
    container `family-pg` starts with it.
 2. `cd C:\Veera\Work\family-expenses`, `git fetch`, `git status`, check the PRs below.
 3. `npm run dev` → http://localhost:3000 (development database `family`).
-4. Next work: **M5 search + monthly view** (§5).
+4. Next work: M5 review → commit/PR when the user says so; then **M6** (§5).
+   M5's last fix is verified (2026-10-22, later session): the month page's breakdowns are flex rows (`Totals` in
+   `src/app/(app)/month/[month]/page.tsx`) and show full names on a 390 px phone (screenshot checked). After the fix:
+   build clean, `e2e/search.spec.ts` 10/10, Vitest 148/148, lint + typecheck clean. The full 74/74 E2E run was before
+   the fix (the fix only touched the month page, which `search.spec.ts` covers).
 
 ## 1. Status
 
-**Milestones 5/8 done** (M0–M4). Work milestone by milestone: build → tests → browser check → summary → the user
+**Milestones 6/8 done** (M0–M5; M5 not committed yet). Work milestone by milestone: build → tests → browser check → summary → the user
 reviews → commit only when asked → ask before every push.
 
 | # | Milestone | Commit | Branch | GitHub |
@@ -22,15 +26,15 @@ reviews → commit only when asked → ask before every push.
 | M1 | Accounts | `55404e9` | `feature/m1-accounts` | PR #1 merged |
 | M2 | Families | `0fc7b66` | `feature/m2-families` | PR #2 merged |
 | M3 | Expenses | `a763aad` | `feature/m3-expenses` | PR #3 merged → `main` = `fdbf15b` |
-| M4 | Receipts + site admin | `883b51e` | `feature/m4-receipts` (from `main`) | **PR #4** open → `main` |
-| M5 | Search + monthly view | — | — | next |
-| M6 | Budgets, charts, CSV | — | — | |
+| M4 | Receipts + site admin | `883b51e` | `feature/m4-receipts` | PR #4 merged → `main` = `c89e096` |
+| M5 | Search + monthly view | not committed | `feature/m5-search` (from `c89e096`) | built, waiting for review |
+| M6 | Budgets, charts, CSV | — | — | next |
 | M7 | Deploy (Vercel + Neon) | — | — | |
 
 - Repo: https://github.com/Veerababu4/ExpTracker (**public**). PRs: https://github.com/Veerababu4/ExpTracker/pulls
 - The repo has `delete_branch_on_merge=false`: stacked PRs need `gh pr edit <n> --base main` after the lower one
   merges. After a merge, `git fetch origin main:main` (fast-forward local `main`).
-- Start M5 from `feature/m4-receipts` (or from `main` once M4 is merged): branch `feature/m5-search`.
+- Local `main` = `origin/main` = `c89e096` (checked with `git rev-parse main origin/main`).
 
 ## 2. Running it
 
@@ -48,8 +52,8 @@ reviews → commit only when asked → ask before every push.
 
 | Command | What | Last result |
 |---|---|---|
-| `npm test` | Vitest: unit + database tests (rebuilds `family_test`) | 128/128 |
-| `npm run e2e` | build + Playwright in Microsoft Edge, desktop + 390 px phone, `next start -p 3100` on `family_test` | 64/64 (~6 min) |
+| `npm test` | Vitest: unit + database tests (rebuilds `family_test`) | 148/148 |
+| `npm run e2e` | build + Playwright in Microsoft Edge, desktop + 390 px phone, `next start -p 3100` on `family_test` | 74/74 (~7 min) |
 | `npm run lint` · `npm run typecheck` · `npm run build` | | clean |
 
 - **Never run `npm test` and the E2E suite at the same time** — both use `family_test` and the Vitest setup drops it.
@@ -60,6 +64,8 @@ reviews → commit only when asked → ask before every push.
 - If a run is interrupted, a `next start -p 3100` or Playwright `node` process can be left behind → "port 3100 is already
   used". Find it with `Get-NetTCPConnection -LocalPort 3100` and stop that process.
 - Playwright wipes `test-results/` at start — write run logs elsewhere (e.g. the session scratchpad).
+- One Vitest run right after an E2E run took 5+ minutes and had 3 failures; two reruns passed 128/128 in 23 s. If it
+  happens again, look at which tests failed before re-running (don't filter the output away).
 - `npx playwright test …` alone does **not** rebuild — run `npm run build` first after code changes (`npm run e2e` does both).
 - E2E site admins: `playwright.config.ts` passes `ADMIN_USERNAMES=admin.desktop,admin.phone` to the test server;
   `receipts.spec.ts` turns receipts off and always back on (keep that test last in its file).
@@ -68,12 +74,13 @@ reviews → commit only when asked → ask before every push.
 
 ```
 src/app/(public)/…        login, register, forgot-password
-src/app/(app)/…           behind login: / (add expense), /expenses/[id], /welcome, /family, /family/add-member,
-                          /family/categories, /family/limits, /account, /first-login, /admin; layout = header + switcher
+src/app/(app)/…           behind login: / (add expense), /expenses/[id], /search, /month/[month], /welcome, /family,
+                          /family/add-member, /family/categories, /family/limits, /account, /first-login, /admin;
+                          layout = header + switcher
 src/app/receipts/[id]     Route Handler serving a receipt file to members of its family
 src/actions/*.ts          Server Actions ("controllers"): parse form → service → FormState
 src/server/services/*.ts  business rules ("@Service"): accounts, families, expenses, expense-access (shared
-                          permission checks), receipts, categories, alert-limits, audit
+                          permission checks), receipts, reports (search + month), categories, alert-limits, audit
 src/server/auth/*.ts      session cookie, requireUser(), requireFamily(), isSiteAdmin()
 src/server/db/            Drizzle schema, client, SQL migrations 0000–0003
 src/lib/                  shared pure code: rules (dates, alerts, join-code, receipts), money, validation (Zod), formatting
@@ -84,21 +91,25 @@ e2e/                      Playwright specs + helpers
 Key rules live in pure, unit-tested files: `src/lib/rules/dates.ts` (India "today", edit windows),
 `src/lib/rules/alerts.ts`, `src/lib/rules/receipts.ts` (limits, file-type sniffing), `src/lib/money.ts` (paise).
 
-## 5. Next: M5 search + monthly view (DESIGN §3.5)
+## 5. Next: M6 budgets, charts, CSV, mobile polish (DESIGN §3.6)
 
 Plan to confirm with the user before building:
 
-1. `/search`: From/To (required; From ≤ To; To ≤ today; ≤ 366 days; from 2000-01-01) + optional member, category
-   (incl. Uncategorised), payment mode. Validation in a pure Zod schema with unit tests; query in a service.
-2. Results newest first, 50 per page, count + total for the whole result (one SQL aggregate), "High" tag (S3),
-   "📎 Receipt" marker (already in `ExpenseList`). Filters in the URL (`?from=…&to=…&page=2`) so results can be shared
-   and the back button works.
-3. `/month/[yyyy-mm]` (any month up to the current one): total, totals by category / member / payment mode, the list,
-   previous/next buttons. Budget status comes in M6.
-4. Header links: Add · Month · Search · Family (bottom bar on phones, DESIGN §6).
-5. Tests: service (filters, family isolation, totals, paging), schema unit tests, E2E for both pages on phone + desktop.
+1. **Budgets (B1)**: migration `0004` — `budgets` table (DESIGN §5: family_id, month, category_id? null = family total,
+   amount_paise, set_by, updated_at; unique `NULLS NOT DISTINCT`). Head-only page `/family/budget`: months from 2 back
+   to 12 ahead, family total + optional per category, "Copy from last month"; changes audited.
+2. **Budget status (B2)** on the monthly view: below 80% normal, 80–100% amber, over 100% red "Over budget by ₹X";
+   same per category; a note (not an error) when category budgets add up to more than the family total.
+3. **Charts (B3)** on the monthly view: spend by category, daily spend for the month, last 6 months trend. **Load the
+   `dataviz` skill before writing any chart code.** Ask the user: inline SVG (no new library, recommended) vs a chart
+   library.
+4. **CSV export (B4)** of search results and of a month: Excel-friendly (UTF-8 BOM, ₹ amounts as plain numbers),
+   cells starting with `= + - @` escaped. Route Handler(s) with the same filters and membership checks as the pages.
+5. **Mobile polish**: bottom bar on phones (Add · Month · Search · Family), check 360 px.
+6. Tests: budget service (head only, months allowed, copy, audit), status maths (pure, unit), CSV escaping (unit),
+   E2E for budget page, month status colours, CSV download.
 
-After M5: M6 budgets/charts/CSV, M7 deploy (+ security headers/CSP, re-check `npm audit`, set `ADMIN_USERNAMES` on Vercel).
+After M6: M7 deploy (Vercel + Neon, security headers/CSP, `npm audit`, `ADMIN_USERNAMES` on Vercel, re-check free tiers).
 
 ## 6. Open questions for the user
 
@@ -135,6 +146,8 @@ After M5: M6 budgets/charts/CSV, M7 deploy (+ security headers/CSP, re-check `np
   "hydrated yet?" use `useSyncExternalStore(() => () => {}, () => true, () => false)`.
 - A file input picked before hydration loses the file (no listener yet) → the picker is disabled until hydrated, and E2E
   waits for `toBeEnabled()` before `setInputFiles`.
+- Links from a month to the search must stop at today (the search refuses future dates).
+- `getByTestId` also matches the hidden previous page → use `locator("[data-testid=…]:visible")`.
 - Playwright `isVisible()` doesn't wait — on a streaming page wait for an element with `expect(...).toBeVisible()` first.
 - Zod 4 cross-field checks: `superRefine(fn, { when: () => true })` so all field errors show at once.
 - E2E tests that open extra browser sessions must close them (`closeExtraPages` in `afterEach`) or Edge stalls.
