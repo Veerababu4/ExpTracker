@@ -47,7 +47,8 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
       <div>
         <h1 className="text-2xl font-semibold">Search</h1>
         <p className="text-sm text-zinc-600">
-          {family.familyName} · {family.kind === "FAMILY" ? "everyone's" : "your"} expenses between two dates (at most one year)
+          {family.familyName} · {family.kind === "FAMILY" ? "everyone's expenses" : "all your expenses, also those shared with a family,"}{" "}
+          between two dates (at most one year)
         </p>
       </div>
 
@@ -119,6 +120,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
             expenses={result.expenses}
             showDate
             showOwner={family.kind === "FAMILY"}
+            showBook={family.kind === "PERSONAL"}
             total={{ count: result.count, paise: result.totalPaise }}
             empty="No expenses match this search."
           />

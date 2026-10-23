@@ -63,7 +63,9 @@ export default async function MonthPage({ params }: { params: Promise<{ month: s
       <div className="flex flex-col gap-3">
         <div>
           <h1 className="text-2xl font-semibold">{formatMonth(month)}</h1>
-          <p className="text-sm text-zinc-600">{family.familyName}</p>
+          <p className="text-sm text-zinc-600">
+            {family.kind === "PERSONAL" ? "My expenses — everything you spent, including what you share with a family" : family.familyName}
+          </p>
         </div>
         <nav aria-label="Months" className="flex flex-wrap items-center gap-2">
           {previous >= FIRST_MONTH && (
@@ -146,8 +148,8 @@ export default async function MonthPage({ params }: { params: Promise<{ month: s
 
       {s.count > 0 && (
         <div className="grid items-start gap-6 md:grid-cols-2">
-          {/* My expenses has one person, so no "By member" (M8). */}
-          {family.kind === "FAMILY" && (
+          {/* My expenses has one person: "Where" (which book) instead of "By member" (M8, §3.8 P8). */}
+          {family.kind === "FAMILY" ? (
             <Card title="By member" id="by-member">
               <Totals
                 groups={s.byMember}
@@ -155,6 +157,10 @@ export default async function MonthPage({ params }: { params: Promise<{ month: s
                 label={(g) => (g.former ? `${g.name} (former member)` : (g.name ?? ""))}
                 href={(g) => searchFor({ member: g.key })}
               />
+            </Card>
+          ) : (
+            <Card title="Where" id="by-book" note="Kept in My expenses, or shared with a family">
+              <Totals groups={s.byBook} total={s.totalPaise} label={(g) => g.name ?? ""} href={() => null} />
             </Card>
           )}
           <Card title="By payment mode" id="by-mode">
@@ -179,7 +185,7 @@ export default async function MonthPage({ params }: { params: Promise<{ month: s
           ) : undefined
         }
       >
-        <ExpenseList expenses={s.expenses} showDate showOwner={family.kind === "FAMILY"} empty={`No expenses in ${formatMonth(month)}.`} />
+        <ExpenseList expenses={s.expenses} showDate showOwner={family.kind === "FAMILY"} showBook={family.kind === "PERSONAL"} empty={`No expenses in ${formatMonth(month)}.`} />
       </Card>
     </div>
   );

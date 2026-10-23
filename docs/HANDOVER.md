@@ -1,6 +1,8 @@
 # Handover — Family Expenses
 
-*Updated 2026-10-22, project wrapped up: all milestones M0–M7 merged (`main` = `ba733fb`), live at https://exptracker1.vercel.app (Vercel + Neon, Singapore), phone test done. Read this first when resuming; requirements and rules are in
+*Updated 2026-10-23: M8 (My expenses, monthly sharing, home page) — part 1 merged (PR #9, `main` = `248a3b7`, Neon at
+`0005`), part 2 on `feature/m8-part2`. Live at https://exptracker1.vercel.app (Vercel + Neon, Singapore). Read this first
+when resuming; requirements and rules are in
 [`DESIGN.md`](DESIGN.md).*
 
 ## 0. Resume in one minute
@@ -9,14 +11,16 @@
    container `family-pg` starts with it.
 2. `cd C:\Veera\Work\family-expenses`, `git fetch`, `git status`, check the PRs below.
 3. `npm run dev` → http://localhost:3000 (development database `family`).
-4. Next work: none planned — the project is wrapped up. Ideas for later are in §5; open review points in §6.
+4. Next work: review/merge the M8 part 2 PR (no migration needed for it). Ideas for later are in §5; open review
+   points in §6. **Long E2E runs need the charger**: on battery the laptop is ~8× slower and Windows' battery saver
+   puts it into Modern Standby mid-run (keep-awake doesn't stop that).
 5. Live site: **https://exptracker1.vercel.app** (health: `/api/health`). Vercel project imported from GitHub —
    every merge to `main` deploys; deployment/preview URLs need a Vercel login (Deployment Protection), the production
    domain is public.
 
 ## 1. Status
 
-**Milestones 8/8 done** (M0–M7, all merged). Work milestone by milestone: build → tests → browser check → summary → the user
+**Milestones 9/9** (M0–M7 merged; M8 part 1 merged, part 2 in a PR). Work milestone by milestone: build → tests → browser check → summary → the user
 reviews → commit only when asked → ask before every push.
 
 | # | Milestone | Commit | Branch | GitHub |
@@ -29,6 +33,8 @@ reviews → commit only when asked → ask before every push.
 | M5 | Search + monthly view | `c2763c3` | `feature/m5-search` (from `c89e096`) | PR #5 merged → `main` = `5079e17` |
 | M6 | Budgets, charts, CSV | part 1 `0898b23`, part 2 `bd1f479` | `feature/m6-budgets` (from `1d48bd0`) | PR into `main` open |
 | M7 | Deploy (Vercel + Neon) | `8e67a54` | `feature/m7-deploy` (from `4235f25`) | PR #7 merged → `main` = `ba733fb`; live at exptracker1.vercel.app |
+| M8 | My expenses + monthly sharing + home page | part 1 `de9443a` | `feature/m8-personal` | PR #9 merged → `main` = `248a3b7`; Neon migrated to `0005` on 23 Oct 2026 |
+| M8 | part 2: My-expenses reports across books, admin line, docs | (this PR) | `feature/m8-part2` (from `de9443a`) | PR open |
 
 - Repo: https://github.com/Veerababu4/ExpTracker (**public**). PRs: https://github.com/Veerababu4/ExpTracker/pulls
 - The repo has `delete_branch_on_merge=false`: stacked PRs need `gh pr edit <n> --base main` after the lower one
@@ -45,18 +51,18 @@ reviews → commit only when asked → ask before every push.
 | Database | Docker `family-pg` (postgres:17-alpine), port **5434**, volume `family-pg-data`, user `family_app`, databases `family` (dev) and `family_test` (tests). Not `vihan-pg` (5432). |
 | Secrets | `.env.local` (git-ignored): `DATABASE_URL`, `TEST_DATABASE_URL`, `POSTGRES_PASSWORD`, `SESSION_SECRET`, optional `ADMIN_USERNAMES`. Never print them. |
 | Site admin | `ADMIN_USERNAMES=<your username>` in `.env.local` (comma-separated) → header link **Admin** → `/admin`. Not set yet locally; in production set it in Vercel (M7). |
-| Migrations | edit `src/server/db/schema.ts` → `npm run db:generate` → review the SQL → `npm run db:migrate` (dev DB). Tests rebuild `family_test` from the migration files each run. Dev DB is at `0004_budgets`. |
+| Migrations | edit `src/server/db/schema.ts` → `npm run db:generate` → review the SQL → `npm run db:migrate` (dev DB). Tests rebuild `family_test` from the migration files each run. Dev DB is at `0005_personal_books`. |
 | Logins | none seeded — register in the browser. Dev DB has no users/families. |
 | **Production** | https://exptracker1.vercel.app · Vercel project (GitHub import, functions `sin1` via `vercel.json`) · Neon project `family-expenses` (AWS Singapore, PostgreSQL 18, db `neondb`). Env vars in Vercel (Production + Preview): `DATABASE_URL` (pooled), `SESSION_SECRET`, `ADMIN_USERNAMES`. |
 | Production secrets | git-ignored **`.env.vercel`** in the project folder (`DATABASE_URL` pooled, `MIGRATION_DATABASE_URL` direct, `SESSION_SECRET`, `ADMIN_USERNAMES`). Never print it; check it with a script that reports only its shape. Not named `.env.production.local` on purpose — Next.js would load that in local builds. |
-| Production migrations | after a new migration is merged: run `drizzle-kit migrate` with `DATABASE_URL` set to `MIGRATION_DATABASE_URL` (direct address) **and** `NODE_OPTIONS=--import ./scripts/dns-public.mjs` (router DNS quirk, §7): `scripts\prod-migrate.ps1` does both; `node --no-warnings --import ./scripts/dns-public.mjs scripts/prod-check.mjs` lists tables / migrations / row counts read-only. Neon is at `0004_budgets`. |
+| Production migrations | after a new migration is merged: run `drizzle-kit migrate` with `DATABASE_URL` set to `MIGRATION_DATABASE_URL` (direct address) **and** `NODE_OPTIONS=--import ./scripts/dns-public.mjs` (router DNS quirk, §7): `scripts\prod-migrate.ps1` does both; `node --no-warnings --import ./scripts/dns-public.mjs scripts/prod-check.mjs` lists tables / migrations / row counts read-only. Neon is at `0005_personal_books` (applied 23 Oct 2026). |
 
 ## 3. Tests and checks (all must pass before reporting a milestone)
 
 | Command | What | Last result |
 |---|---|---|
-| `npm test` | Vitest: unit + database tests (rebuilds `family_test`) | 182/182 |
-| `npm run e2e` | build + Playwright in Microsoft Edge, desktop + 390 px phone, `next start -p 3100` on `family_test` | 90/90 (~9 min) |
+| `npm test` | Vitest: unit + database tests (rebuilds `family_test`) | 211/211 |
+| `npm run e2e` | build + Playwright in Microsoft Edge, desktop + 390 px phone, `next start -p 3100` on `family_test` | 96/96 (~8 min on charger; `globalTimeout` 30 min) |
 | `npm run lint` · `npm run typecheck` · `npm run build` | | clean |
 
 - **Never run `npm test` and the E2E suite at the same time** — both use `family_test` and the Vitest setup drops it.
@@ -83,9 +89,11 @@ src/app/(app)/…           behind login: / (add expense), /expenses/[id], /sear
 src/app/receipts/[id]     Route Handler serving a receipt file to members of its family
 src/app/export/expenses   Route Handler: CSV download of a search or a month (same filters as /search)
 src/actions/*.ts          Server Actions ("controllers"): parse form → service → FormState
-src/server/services/*.ts  business rules ("@Service"): accounts, families, expenses, expense-access (shared
-                          permission checks), receipts, reports (search + month + export), categories, alert-limits,
-                          budgets, audit
+src/server/services/*.ts  business rules ("@Service"): accounts, families, books (M8: personal books, sharing
+                          timeline, moving expenses), expenses, expense-access (shared permission checks), receipts,
+                          reports (search + month + export; "all of mine" scope for My expenses), categories,
+                          alert-limits, budgets, audit
+src/app/home              M8 home page for visitors (quotes carousel, savings calculator); quotes in src/lib/quotes.ts
 src/server/auth/*.ts      session cookie, requireUser(), requireFamily(), isSiteAdmin()
 src/server/db/            Drizzle schema, client, SQL migrations 0000–0004
 src/lib/                  shared pure code: rules (dates, alerts, join-code, receipts, budget), money, csv, charts,
@@ -117,6 +125,11 @@ Ideas if the project continues:
 
 ## 6. Open questions for the user
 
+- **M8 choices made without asking** (confirm in review): the Add page's date box allows My expenses' window (current +
+  2 months) for everyone, and a shared family month still refuses dates outside the member window; a newly approved
+  member who never picked a book opens the family next time; new accounts land on `/welcome`; an admin sees all
+  personal books' receipts as one line; Playwright `globalTimeout` raised to 30 min.
+
 - **Blinking**: the very-high warning blinks 5 times (~5 s) then stays solid red (accessibility rule WCAG 2.2.2). Offer
   continuous blinking if they prefer.
 - **Password reset in two families**: the head of either family can reset that person's password (as specified). Keep, or
@@ -139,6 +152,16 @@ Ideas if the project continues:
   sizes, never the receipts.
 
 ## 7. Gotchas learned (Next.js 16 and this setup)
+
+- **M8 production migration**: merging a PR deploys at once, but Neon migrations run from the laptop. Run
+  `scripts\prod-migrate.ps1` right after merging a PR that adds one (PR #9's live site needed `0005` before logged-in
+  pages worked). `0005` moves the month it runs in — re-running is a no-op (drizzle records it).
+- **Battery**: E2E on battery took 43 min for 65 tests and Modern Standby ("Austerity Battery Drain Budget") paused a
+  run for 1.5 h; on the charger the same tests take ~8 min. Check `Win32_Battery.BatteryStatus` (2 = charger).
+- The header isn't re-rendered on in-app navigation (layouts are kept): right after first login it has no switcher.
+  E2E checks the open book from the Add page subtitle ("<book> · you can use dates from"), not the header.
+- Postgres can't GROUP BY a `case` expression that contains a bound parameter (`$1` in select ≠ `$2` in group by) —
+  group by plain columns and merge in TypeScript (admin receipts line).
 
 - `node_modules/next/dist/docs/` is the source of truth for Next 16 (AGENTS.md). Middleware is now `src/proxy.ts`.
 - **Cache Components is on**: every session read sits behind `loading.tsx`/`<Suspense>`, and `getCurrentUser()` calls

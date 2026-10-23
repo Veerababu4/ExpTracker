@@ -20,7 +20,7 @@ import {
   regenerateJoinCode,
   requestToJoin,
 } from "./families";
-import { monthSummary } from "./reports";
+import { exportExpenses, monthSummary, monthTrend, searchExpenses } from "./reports";
 
 // M8 (DESIGN §3.8): My expenses for everyone, and month-by-month sharing with one family.
 
@@ -225,6 +225,69 @@ describe("switching", () => {
     const labels = await familySharing(familyId, TODAY);
     expect(labels.get(head)).toEqual({ familyId, since: "2026-10" });
     expect(labels.get(member)).toEqual({ familyId: null, since: null });
+  });
+});
+
+describe("My expenses reports: all of my own expenses (P8)", () => {
+  /** Sita: Sept in My expenses, Oct shared with Kumar family; Ravi's own expense must never show up. */
+  async function sitaWithBoth() {
+    const s = await setup();
+    const familyCats = await listCategories(s.member, s.familyId);
+    const myCats = await listCategories(s.member, s.personal);
+    const id = (cats: { id: string; name: string }[], name: string) => cats.find((c) => c.name === name)!.id;
+    await mine(s.member, { expenseDate: "2026-09-12", amount: 30000, categoryId: id(myCats, "Groceries") });
+    await mine(s.member, { amount: 1000, categoryId: id(myCats, "Groceries") });
+    await setSharing(s.member, s.familyId, TODAY); // the 1000 moves to the family
+    await mine(s.member, { amount: 2000, categoryId: id(familyCats, "Groceries") });
+    await mine(s.member, { amount: 500 });
+    await setSharing(s.head, s.familyId, TODAY);
+    await mine(s.head, { amount: 99900 });
+    return { ...s, myGroceries: id(myCats, "Groceries") };
+  }
+
+  it("the month covers what I shared with the family, grouped by category name, with a Where breakdown", async () => {
+    const { member, personal, myGroceries } = await sitaWithBoth();
+    const s = await monthSummary(member, personal, "2026-10");
+    expect(s.totalPaise).toBe(3500);
+    expect(s.byCategory.map((g) => [g.key, g.name, g.paise])).toEqual([
+      [myGroceries, "Groceries", 3000],
+      [null, null, 500],
+    ]);
+    expect(s.byBook.map((g) => [g.name, g.paise])).toEqual([["Kumar family", 3500]]);
+    expect(s.byMember).toEqual([]);
+    expect(s.expenses.every((e) => e.bookName === "Kumar family")).toBe(true);
+  });
+
+  it("the trend has both months; search by my category finds it in every book", async () => {
+    const { member, personal, myGroceries } = await sitaWithBoth();
+    const trend = await monthTrend(member, personal, "2026-10", 2);
+    expect(trend.map((t) => [t.month, t.paise])).toEqual([
+      ["2026-09", 30000],
+      ["2026-10", 3500],
+    ]);
+    const found = await searchExpenses(member, personal, { from: "2026-09-01", to: TODAY, category: myGroceries });
+    expect([found.count, found.totalPaise]).toEqual([3, 33000]);
+    const csv = await exportExpenses(member, personal, { from: "2026-09-01", to: TODAY });
+    expect(csv.map((e) => e.bookName)).toEqual(["My expenses", "Kumar family", "Kumar family", "Kumar family"]);
+  });
+
+  it("the family's reports are unchanged: only what is in the family", async () => {
+    const { head, familyId } = await sitaWithBoth();
+    const s = await monthSummary(head, familyId, "2026-10");
+    expect(s.totalPaise).toBe(3500 + 99900);
+    expect(s.byBook).toEqual([]);
+  });
+
+  it("nobody else can read my My expenses", async () => {
+    const { head, personal } = await sitaWithBoth();
+    await expect(monthSummary(head, personal, "2026-10")).rejects.toBeInstanceOf(NotAllowedError);
+  });
+
+  it("a family I left drops out of My expenses (its expenses stay with the family)", async () => {
+    const { member, familyId, personal } = await sitaWithBoth();
+    await leaveFamily(member, familyId, TODAY);
+    expect((await monthSummary(member, personal, "2026-10")).totalPaise).toBe(0);
+    expect((await monthSummary(member, personal, "2026-09")).totalPaise).toBe(30000);
   });
 });
 
