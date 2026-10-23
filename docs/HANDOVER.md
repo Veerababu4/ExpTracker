@@ -1,7 +1,7 @@
 # Handover — Family Expenses
 
 *Updated 2026-10-23: all milestones M0–M8 merged (M8 = My expenses, monthly sharing, home page: PRs #9 + #10,
-`main` = `a361706`, Neon at `0005`). Live at https://exptracker1.vercel.app (Vercel + Neon, Singapore). Read this first
+docs #11 and #12; Neon at `0005`). The repo has only the `main` branch. Live at https://exptracker1.vercel.app (Vercel + Neon, Singapore). Read this first
 when resuming; requirements and rules are in
 [`DESIGN.md`](DESIGN.md).*
 
@@ -39,9 +39,9 @@ reviews → commit only when asked → ask before every push.
 - Repo: https://github.com/Veerababu4/ExpTracker (**public**). PRs: https://github.com/Veerababu4/ExpTracker/pulls
 - The repo has `delete_branch_on_merge=false`: stacked PRs need `gh pr edit <n> --base main` after the lower one
   merges. After a merge, `git fetch origin main:main` (fast-forward local `main`).
-- Local `main` = `origin/main` = `a361706` and tracks `origin/main` (`git pull` works). **Local branches**: only `main`
-  — the merged feature/docs branches were deleted locally on 2026-10-23 at the user's request. They still exist on
-  GitHub; delete those only if the user asks. Start new work on a fresh branch from `main`.
+- **Branches**: only `main`, locally and on GitHub — the user deleted every merged branch on 2026-10-23 (GitHub) and
+  asked for the local ones to go too. Local `main` tracks `origin/main` (`git pull` works). Start new work on a fresh
+  branch from `main`; after a PR is merged, delete its branch (GitHub's "Delete branch" button, `git branch -d` locally).
 
 ## 2. Running it
 
@@ -121,7 +121,6 @@ Ideas if the project continues:
 - A Neon branch for Vercel preview deployments, instead of previews sharing the production database.
 - Backups: Neon free keeps only 6 hours of history — a periodic `pg_dump` from the laptop (through
   `scripts/dns-public.mjs`) would be safer once real data matters.
-- Delete the merged branches on GitHub (only when the user asks; local ones are already gone).
 - Changing the schema later: `npm run db:generate` → review → tests → PR → merge → `scripts\prod-migrate.ps1`
   (Neon) — run the migration before or right after the merge that needs it.
 
