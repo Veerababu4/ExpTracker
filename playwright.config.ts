@@ -13,7 +13,7 @@ export default defineConfig({
   fullyParallel: false,
   workers: 1,
   globalSetup: "./e2e/global-setup.ts",
-  globalTimeout: 15 * 60_000, // a stuck browser fails the run instead of hanging forever
+  globalTimeout: 30 * 60_000, // a stuck browser fails the run instead of hanging forever (96 tests since M8)
   reporter: [["list"]],
   use: {
     baseURL: `http://localhost:${PORT}`,

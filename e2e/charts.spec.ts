@@ -1,7 +1,7 @@
 import { expect, test, type Page } from "@playwright/test";
 import { formatIsoDay, formatMonth } from "../src/lib/format";
 import { addMonths, monthOf, todayInIndia } from "../src/lib/rules/dates";
-import { closeExtraPages, createFamily, register, uniqueName } from "./helpers";
+import { closeExtraPages, createFamily, register, shareSince, uniqueName } from "./helpers";
 
 // M6 part 2 journeys: the month's charts (category bars on one scale with budget ticks, day by day, last 6
 // months — each with a summary, links, a tooltip and a table) and the phones' bottom bar.
@@ -29,8 +29,10 @@ async function setBudget(page: Page, amounts: Record<string, string>) {
 }
 
 test("month charts: category bars with budget ticks, day by day and last 6 months, each with a table", async ({ page }) => {
-  await register(page, uniqueName("ravi"), "Ravi");
+  const head = uniqueName("ravi");
+  await register(page, head, "Ravi");
   await createFamily(page, "Kumar family");
+  await shareSince(head, lastMonth); // so last month's expense is in the family too (M8)
   await addExpense(page, "500", { category: "Groceries" });
   await addExpense(page, "1200", { category: "Fuel & transport" });
   await addExpense(page, "900", { date: `${lastMonth}-15` }); // the head may use the last 2 months

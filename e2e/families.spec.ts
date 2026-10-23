@@ -22,7 +22,7 @@ test("create a family, join with the code, head approves", async ({ page, browse
   await expect(member.getByText("Request sent to “Kumar family”.", { exact: false })).toBeVisible();
   await expect(member.getByText("Waiting for approval")).toBeVisible();
   await member.goto("/");
-  await expect(member).toHaveURL(/\/welcome$/); // no access yet
+  await expectHome(member, "My expenses"); // no access to the family yet
 
   await page.goto("/family");
   const request = memberRow(page, memberName);
@@ -137,7 +137,7 @@ test("transfer head, then the old head can leave; head removes a member", async 
   // The old head (now a member) leaves.
   await page.getByRole("button", { name: "Leave family" }).click();
   await page.getByRole("button", { name: "Yes, leave" }).click();
-  await expect(page).toHaveURL(/\/welcome$/);
+  await expectHome(page, "My expenses");
 
   // New head removes nobody else is left but herself — invite and remove a third person.
   const anil = await newUserPage(browser, baseURL, viewport);
@@ -152,7 +152,7 @@ test("transfer head, then the old head can leave; head removes a member", async 
   await anilRow.getByRole("button", { name: "Yes, remove" }).click();
   await expect(memberRow(sita, anilName)).toHaveCount(0);
   await anil.goto("/");
-  await expect(anil).toHaveURL(/\/welcome$/);
+  await expectHome(anil, "My expenses");
 });
 
 test("one person in two families switches between them", async ({ page, browser, baseURL, viewport }) => {

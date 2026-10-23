@@ -3,8 +3,10 @@
 import { useActionState } from "react";
 import { createFamilyAction, joinFamilyAction } from "@/actions/family";
 import { FormMessage, SubmitButton, TextField } from "@/components/form";
+import { IncludeExpensesCheckbox } from "@/components/include-expenses";
 
-export function CreateFamilyForm() {
+/** `month`: this month's name, for the "include my expenses" checkbox. */
+export function CreateFamilyForm({ month }: { month: string }) {
   const [state, action] = useActionState(createFamilyAction, {});
   return (
     <form action={action} className="flex flex-col gap-4" noValidate>
@@ -16,12 +18,13 @@ export function CreateFamilyForm() {
         defaultValue={state.values?.name}
         errors={state.fieldErrors?.name}
       />
+      <IncludeExpensesCheckbox month={month} />
       <SubmitButton pendingText="Creating…">Create family</SubmitButton>
     </form>
   );
 }
 
-export function JoinFamilyForm() {
+export function JoinFamilyForm({ month }: { month: string }) {
   const [state, action] = useActionState(joinFamilyAction, {});
   return (
     <form action={action} className="flex flex-col gap-4" noValidate>
@@ -37,6 +40,7 @@ export function JoinFamilyForm() {
         defaultValue={state.ok ? "" : state.values?.code}
         errors={state.fieldErrors?.code}
       />
+      <IncludeExpensesCheckbox month={month} />
       <SubmitButton pendingText="Sending…">Ask to join</SubmitButton>
     </form>
   );

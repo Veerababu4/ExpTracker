@@ -1,15 +1,16 @@
 import "server-only";
 import { and, asc, desc, eq, inArray, isNull } from "drizzle-orm";
 import { db } from "@/server/db";
-import { auditLog, categories, expenses, familyMembers, receipts, users } from "@/server/db/schema";
-import { editWindow, isInWindow, todayInIndia, type DateWindow, type IsoDate } from "@/lib/rules/dates";
+import { auditLog, categories, expenses, families, familyMembers, receipts, users } from "@/server/db/schema";
+import { editWindow, isInWindow, monthOf, todayInIndia, type DateWindow, type IsoDate, type IsoMonth } from "@/lib/rules/dates";
 import { effectiveLimits, type AlertLimits } from "@/lib/rules/alerts";
 import type { PaymentMode } from "@/lib/expense-options";
 import { RECEIPTS_CAP_BYTES, type ReceiptType } from "@/lib/rules/receipts";
 import type { ExpenseInput } from "@/lib/validation/expense";
 import { writeAudit } from "./audit";
+import { bookForMonth } from "./books";
 import { checkDate, loadForChange, type DateRefusal } from "./expense-access";
-import { assertHead, assertMember } from "./families";
+import { assertHead, assertMember, getRole, type BookKind } from "./families";
 import { ReceiptRefused, storeReceipt, type ReceiptInfo, type ReceiptProblem } from "./receipts";
 
 // Expense rules (DESIGN §3.3, §4.1). Who may change what, and for which dates, is decided here — never in
@@ -18,7 +19,9 @@ import { ReceiptRefused, storeReceipt, type ReceiptInfo, type ReceiptProblem } f
 export type ChangeResult =
   | { ok: true; id: string }
   | DateRefusal
-  | { ok: false; reason: "bad_category" | "not_found" | ReceiptProblem };
+  | { ok: false; reason: "bad_category" | "not_found" | ReceiptProblem }
+  /** The date is in a month whose expenses belong in another book (DESIGN §3.8 P4, P5). */
+  | { ok: false; reason: "other_book"; month: IsoMonth };
 
 /** The fields a person edits, in the shape stored in the change log. */
 type Snapshot = {
@@ -50,7 +53,21 @@ async function categoryAllowed(familyId: string, categoryId: string | null, keep
 
 // ── Changing ──────────────────────────────────────────────────────────────────
 
-/** Adds an expense, optionally with its receipt (saved together, or neither is saved). */
+/**
+ * Adds one of my expenses (P4): it goes to the book that holds my expenses for the date's month — the family I
+ * share with that month, else My expenses.
+ */
+export async function addMyExpense(
+  actorId: string,
+  input: ExpenseInput,
+  today: IsoDate = todayInIndia(),
+  options: { receipt?: Buffer; capBytes?: number } = {},
+): Promise<ChangeResult> {
+  const book = await bookForMonth(actorId, monthOf(input.expenseDate));
+  return addExpense(actorId, book, input, today, options);
+}
+
+/** Adds an expense to a book, optionally with its receipt (saved together, or neither is saved). */
 export async function addExpense(
   actorId: string,
   familyId: string,
@@ -61,6 +78,8 @@ export async function addExpense(
   const role = await assertMember(actorId, familyId);
   const dateProblem = checkDate(input.expenseDate, role, today);
   if (dateProblem) return dateProblem;
+  const month = monthOf(input.expenseDate);
+  if ((await bookForMonth(actorId, month)) !== familyId) return { ok: false, reason: "other_book", month };
   const after = snapshotOf(input);
   if (!(await categoryAllowed(familyId, after.categoryId))) return { ok: false, reason: "bad_category" };
 
@@ -102,6 +121,11 @@ export async function updateExpense(
   // Both the current date and the new one must be inside the window (DESIGN §4.1).
   const dateProblem = checkDate(row.expenseDate, role, today) ?? checkDate(input.expenseDate, role, today);
   if (dateProblem) return dateProblem;
+  // A new month may belong to another book for the owner; then nothing moves silently (P5).
+  const month = monthOf(input.expenseDate);
+  if (month !== monthOf(row.expenseDate) && (await bookForMonth(row.ownerId, month)) !== familyId) {
+    return { ok: false, reason: "other_book", month };
+  }
   const after = snapshotOf(input);
   if (!(await categoryAllowed(familyId, after.categoryId, row.categoryId))) return { ok: false, reason: "bad_category" };
 
@@ -177,6 +201,10 @@ export async function deleteExpense(
 
 export type ExpenseView = {
   id: string;
+  /** The book it's in: a family or the owner's My expenses (M8). */
+  familyId: string;
+  bookName: string;
+  bookKind: BookKind;
   ownerId: string;
   ownerName: string;
   /** The owner has left or was removed from the family (F9: shown as "(former member)"). */
@@ -196,6 +224,9 @@ export type ExpenseView = {
 
 const viewColumns = {
   id: expenses.id,
+  familyId: expenses.familyId,
+  bookName: families.name,
+  bookKind: families.kind,
   ownerId: expenses.ownerId,
   ownerName: users.displayName,
   expenseDate: expenses.expenseDate,
@@ -220,6 +251,7 @@ export function viewQuery() {
     .select(viewColumns)
     .from(expenses)
     .innerJoin(users, eq(users.id, expenses.ownerId))
+    .innerJoin(families, eq(families.id, expenses.familyId))
     .leftJoin(categories, eq(categories.id, expenses.categoryId))
     .leftJoin(familyMembers, and(eq(familyMembers.familyId, expenses.familyId), eq(familyMembers.userId, expenses.ownerId)))
     .leftJoin(receipts, eq(receipts.expenseId, expenses.id)); // never selects the file itself
@@ -258,13 +290,31 @@ export async function getExpense(
   return { expense, canChange: true, window };
 }
 
-/** A person's own entries for one date — the quick check under the add form (DESIGN E8). */
-export async function entriesForDay(userId: string, familyId: string, date: IsoDate): Promise<ExpenseView[]> {
-  await assertMember(userId, familyId);
+/**
+ * The book an expense is in, when the viewer may open it (an active member of that book); else null. The expense
+ * page uses it, so an expense opens whichever book is chosen in the header (M8).
+ */
+export async function expenseBookFor(viewerId: string, expenseId: string): Promise<string | null> {
+  const row = await db.query.expenses.findFirst({
+    where: and(eq(expenses.id, expenseId), isNull(expenses.deletedAt)),
+    columns: { familyId: true },
+  });
+  return row && (await getRole(viewerId, row.familyId)) ? row.familyId : null;
+}
+
+/**
+ * A person's own entries for one date — the quick check under the add form (DESIGN E8): from My expenses and the
+ * families they're in, since a date's month decides the book (P4).
+ */
+export async function entriesForDay(userId: string, date: IsoDate): Promise<ExpenseView[]> {
+  const myBooks = db
+    .select({ id: familyMembers.familyId })
+    .from(familyMembers)
+    .where(and(eq(familyMembers.userId, userId), eq(familyMembers.status, "ACTIVE")));
   const rows = await viewQuery()
     .where(
       and(
-        eq(expenses.familyId, familyId),
+        inArray(expenses.familyId, myBooks),
         eq(expenses.ownerId, userId),
         eq(expenses.expenseDate, date),
         isNull(expenses.deletedAt),
@@ -284,15 +334,24 @@ export type HistoryEntry = {
   receipt: ReceiptInfo | null;
 };
 
-/** Change log of one expense, newest first. Head only (DESIGN E7). */
+/**
+ * Change log of one expense, newest first. Head of the book it's in now (DESIGN E7). The log follows the expense
+ * when it moves between books (M8); a move is logged in both books, shown once.
+ */
 export async function expenseHistory(headId: string, familyId: string, expenseId: string): Promise<HistoryEntry[]> {
   await assertHead(headId, familyId);
-  const rows = await db
+  const inBook = await db.query.expenses.findFirst({
+    where: and(eq(expenses.id, expenseId), eq(expenses.familyId, familyId)),
+    columns: { id: true },
+  });
+  if (!inBook) return [];
+  const all = await db
     .select({ action: auditLog.action, actorName: users.displayName, at: auditLog.at, details: auditLog.details })
     .from(auditLog)
     .leftJoin(users, eq(users.id, auditLog.actorId))
-    .where(and(eq(auditLog.familyId, familyId), eq(auditLog.entityType, "expense"), eq(auditLog.entityId, expenseId)))
+    .where(and(eq(auditLog.entityType, "expense"), eq(auditLog.entityId, expenseId)))
     .orderBy(desc(auditLog.at));
+  const rows = all.filter((r, i) => !(r.action === "EXPENSE_MOVED" && i > 0 && all[i - 1].action === r.action && +all[i - 1].at === +r.at));
   return rows.map((r) => {
     const d = (r.details ?? {}) as { before?: Partial<Snapshot>; after?: Partial<Snapshot>; receipt?: ReceiptInfo };
     return {
@@ -306,12 +365,15 @@ export async function expenseHistory(headId: string, familyId: string, expenseId
   });
 }
 
-/** Category names by id, including hidden ones (old expenses and the change log may still use them). */
-export async function categoryNames(familyId: string, ids: string[]): Promise<Map<string, string>> {
+/**
+ * Category names by id, including hidden ones, for the change log of an expense the viewer may already see. Any
+ * book's: an expense that moved (M8) keeps its old book's category ids in its log.
+ */
+export async function categoryNames(ids: string[]): Promise<Map<string, string>> {
   if (ids.length === 0) return new Map();
   const rows = await db
     .select({ id: categories.id, name: categories.name })
     .from(categories)
-    .where(and(eq(categories.familyId, familyId), inArray(categories.id, ids)));
+    .where(inArray(categories.id, ids));
   return new Map(rows.map((r) => [r.id, r.name]));
 }

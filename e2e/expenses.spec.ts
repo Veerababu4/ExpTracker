@@ -1,6 +1,6 @@
 import { expect, test, type Page } from "@playwright/test";
-import { addDays, editWindow, todayInIndia } from "../src/lib/rules/dates";
-import { approve, askToJoin, closeExtraPages, createFamily, newUserPage, register, uniqueName } from "./helpers";
+import { addDays, addMonths, editWindow, monthOf, todayInIndia } from "../src/lib/rules/dates";
+import { approve, askToJoin, closeExtraPages, createFamily, newUserPage, register, shareSince, uniqueName } from "./helpers";
 
 // M3 journeys: add expenses, live high-value alerts, edit/delete with the date windows, head powers,
 // categories and per-member alert limits.
@@ -154,7 +154,7 @@ test("members change only their own; the head can change a member's", async ({ p
   await amountBox(page).fill("540");
   await page.getByRole("button", { name: "Save changes" }).click();
   await expect(page.getByText(/^Saved: ₹540\.00/)).toBeVisible();
-  await expect(page.getByText(/· added by Sita$/)).toBeVisible(); // the subtitle, not the change log's "Added by"
+  await expect(page.getByText(/· added by Sita · in Kumar family$/)).toBeVisible(); // the subtitle, not the change log's "Added by"
 
   await member.reload();
   await expect(member.getByRole("heading", { name: "₹540.00" })).toBeVisible();
@@ -162,15 +162,17 @@ test("members change only their own; the head can change a member's", async ({ p
 });
 
 test("dates outside the person's window are refused", async ({ page, browser, baseURL, viewport }) => {
-  const { member } = await familyOfTwo(page, browser, baseURL, viewport);
+  const { member, memberName } = await familyOfTwo(page, browser, baseURL, viewport);
   const memberWindow = editWindow("MEMBER", today);
   const headWindow = editWindow("HEAD", today);
+  // The member shares with the family from 2 months back, so the day before their window is a family date (M8).
+  await shareSince(memberName, addMonths(monthOf(today), -2));
 
+  // The date box allows My expenses' window (the head's); a family date outside the member window is refused.
   await member.goto("/");
-  await expect(dateBox(member)).toHaveAttribute("min", memberWindow.from);
+  await expect(dateBox(member)).toHaveAttribute("min", headWindow.from);
   await expect(dateBox(member)).toHaveAttribute("max", today);
 
-  // Typed past the date picker's limits, the server still refuses.
   await dateBox(member).fill(addDays(memberWindow.from, -1));
   await amountBox(member).fill("100");
   await member.getByRole("button", { name: "Save expense" }).click();

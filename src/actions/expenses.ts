@@ -3,7 +3,7 @@
 import { refresh } from "next/cache";
 import { redirect } from "next/navigation";
 import { invalid, keepValues, readForm, type FormState } from "@/lib/form-state";
-import { formatIsoDate } from "@/lib/format";
+import { formatIsoDate, formatMonth } from "@/lib/format";
 import { formatRupees, paiseToInput } from "@/lib/money";
 import { DEFAULT_LIMITS } from "@/lib/rules/alerts";
 import { MAX_RECEIPT_BYTES } from "@/lib/rules/receipts";
@@ -12,7 +12,7 @@ import { uuidSchema } from "@/lib/validation/family";
 import { requireUser } from "@/server/auth/session";
 import { setMemberLimits } from "@/server/services/alert-limits";
 import { addCategory, renameCategory, setCategoryHidden } from "@/server/services/categories";
-import { addExpense, deleteExpense, updateExpense, type ChangeResult } from "@/server/services/expenses";
+import { addMyExpense, deleteExpense, updateExpense, type ChangeResult } from "@/server/services/expenses";
 import { attachReceipt, removeReceipt, type ReceiptProblem } from "@/server/services/receipts";
 
 // Expense, receipt, category and alert-limit actions (DESIGN §3.3, §3.4, §3.7, §4.2).
@@ -47,6 +47,14 @@ function refusal(result: Exclude<ChangeResult, { ok: true }>): FormState {
       return { fieldErrors: { categoryId: ["That category isn't available any more. Choose another."] } };
     case "not_found":
       return { message: "This expense no longer exists — it may have been deleted." };
+    case "other_book":
+      return {
+        fieldErrors: {
+          expenseDate: [
+            `Expenses dated in ${formatMonth(result.month)} are kept in another book (your sharing for that month). Delete this one and add it again with the new date.`,
+          ],
+        },
+      };
     default:
       return { fieldErrors: { receipt: [RECEIPT_TEXT[result.reason]] } };
   }
@@ -79,7 +87,7 @@ export async function saveExpenseAction(_prev: FormState, formData: FormData): P
 
   const result = expenseId
     ? await updateExpense(user.id, familyId, expenseId, parsed.data)
-    : await addExpense(user.id, familyId, parsed.data, undefined, { receipt });
+    : await addMyExpense(user.id, parsed.data, undefined, { receipt }); // the date's month picks the book (M8)
   if (!result.ok) return { ...refusal(result), values: form };
 
   refresh();

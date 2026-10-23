@@ -12,7 +12,7 @@ import { formatBytes, isPhoto } from "@/lib/rules/receipts";
 import { uuidSchema } from "@/lib/validation/family";
 import { requireFamily } from "@/server/auth/family";
 import { listCategories } from "@/server/services/categories";
-import { categoryNames, expenseHistory, getExpense, type ExpenseView, type HistoryEntry } from "@/server/services/expenses";
+import { categoryNames, expenseBookFor, expenseHistory, getExpense, type ExpenseView, type HistoryEntry } from "@/server/services/expenses";
 import { uploadState } from "@/server/services/receipts";
 import { DeleteExpense } from "./delete-expense";
 import { ReceiptForms } from "./receipt-forms";
@@ -22,7 +22,11 @@ export const metadata: Metadata = { title: "Expense · Family Expenses" };
 export default async function ExpensePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   if (!uuidSchema.safeParse(id).success) notFound();
-  const { user, family } = await requireFamily();
+  const { user, books } = await requireFamily();
+  // The expense opens in its own book (a family or My expenses), whichever one the header shows (M8).
+  const bookId = await expenseBookFor(user.id, id);
+  const family = books.find((b) => b.familyId === bookId);
+  if (!family) notFound();
   const found = await getExpense(user.id, family.familyId, id);
   if (!found) notFound();
   const { expense, canChange, whyNot, window } = found;
@@ -37,7 +41,7 @@ export default async function ExpensePage({ params }: { params: Promise<{ id: st
   if (expense.categoryId && expense.categoryName && !categories.some((c) => c.id === expense.categoryId)) {
     categories.push({ id: expense.categoryId, name: `${expense.categoryName} (hidden)`, hidden: true });
   }
-  const names = await categoryNames(family.familyId, historyCategoryIds(history));
+  const names = await categoryNames(historyCategoryIds(history));
   const isOwn = expense.ownerId === user.id;
 
   return (
@@ -55,7 +59,7 @@ export default async function ExpensePage({ params }: { params: Promise<{ id: st
         </h1>
         <p className="text-sm text-zinc-600">
           {expense.categoryName ?? UNCATEGORISED} · {formatIsoDate(expense.expenseDate)} · added by{" "}
-          {isOwn ? "you" : ownerLabel(expense)}
+          {isOwn ? "you" : ownerLabel(expense)} · in {family.familyName}
         </p>
       </div>
 
@@ -145,7 +149,7 @@ export default async function ExpensePage({ params }: { params: Promise<{ id: st
                       ({isPhoto(h.receipt.contentType) ? "photo" : "PDF"}, {formatBytes(h.receipt.sizeBytes)})
                     </span>
                   )}{" "}
-                  by {h.actorName ?? "a former user"} · <span className="text-zinc-500">{formatDateTime(h.at)}</span>
+                  by {h.actorName ?? (h.action === "EXPENSE_MOVED" ? "the site (sharing started)" : "a former user")} · <span className="text-zinc-500">{formatDateTime(h.at)}</span>
                 </p>
                 {h.action === "EXPENSE_UPDATED" && h.before && h.after && (
                   <ul className="mt-1 list-disc pl-5 text-zinc-700">
@@ -173,6 +177,7 @@ const ACTION_TEXT: Record<string, string> = {
   RECEIPT_ADDED: "Receipt added",
   RECEIPT_REPLACED: "Receipt replaced",
   RECEIPT_REMOVED: "Receipt removed",
+  EXPENSE_MOVED: "Moved between My expenses and a family",
 };
 const FIELD_TEXT: Record<string, string> = {
   expenseDate: "Date",

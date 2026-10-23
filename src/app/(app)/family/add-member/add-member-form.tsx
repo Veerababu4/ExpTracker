@@ -4,9 +4,10 @@ import { useActionState, useState } from "react";
 import { createMemberLoginAction } from "@/actions/family";
 import { buttonClass } from "@/components/button-class";
 import { FormMessage, SubmitButton, TextField } from "@/components/form";
+import { IncludeExpensesCheckbox } from "@/components/include-expenses";
 import { suggestTempPassword } from "@/lib/temp-password";
 
-export function AddMemberForm({ familyId }: { familyId: string }) {
+export function AddMemberForm({ familyId, month }: { familyId: string; month: string }) {
   const [state, action] = useActionState(createMemberLoginAction, {});
   const [password, setPassword] = useState("");
   const errors = state.fieldErrors ?? {};
@@ -54,6 +55,7 @@ export function AddMemberForm({ familyId }: { familyId: string }) {
         errors={errors.mobile}
       />
       <TextField label="Email" name="email" type="email" autoComplete="off" optional defaultValue={v.email} errors={errors.email} />
+      <IncludeExpensesCheckbox month={month} whose="their" />
       <SubmitButton pendingText="Creating…">Create login</SubmitButton>
     </form>
   );

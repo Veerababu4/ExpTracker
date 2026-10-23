@@ -1,8 +1,11 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { cancelJoinRequestAction, switchFamilyAction } from "@/actions/family";
 import { ActionButton } from "@/components/actions";
 import { Card } from "@/components/card";
-import { formatDate } from "@/lib/format";
+import { buttonClass } from "@/components/button-class";
+import { formatDate, formatMonth } from "@/lib/format";
+import { monthOf, todayInIndia } from "@/lib/rules/dates";
 import { getFamilyContext } from "@/server/auth/family";
 import { myJoinRequests } from "@/server/services/families";
 import { CreateFamilyForm, JoinFamilyForm } from "./welcome-forms";
@@ -21,6 +24,7 @@ const statusText = { PENDING: "Waiting for approval", APPROVED: "Approved", REJE
 export default async function WelcomePage() {
   const { user, families, family } = await getFamilyContext();
   const requests = await myJoinRequests(user.id);
+  const month = formatMonth(monthOf(todayInIndia()));
 
   return (
     <div className="flex flex-col gap-6">
@@ -31,9 +35,17 @@ export default async function WelcomePage() {
         <p className="text-sm text-zinc-600">
           {families.length
             ? "Switch family, start another one, or join one with a family code."
-            : "To start, create a family for your household — or join one that a family member already created."}
+            : "Your own book, My expenses, is ready — only you can see it. To share expenses with your household, create a family or join one."}
         </p>
       </div>
+
+      {families.length === 0 && (
+        <p>
+          <Link href="/" className={buttonClass("primary", "md")}>
+            Start adding my expenses →
+          </Link>
+        </p>
+      )}
 
       {families.length > 0 && (
         <Card title="Families you belong to" id="mine">
@@ -61,10 +73,10 @@ export default async function WelcomePage() {
 
       <div className="grid gap-6 md:grid-cols-2">
         <Card title="Start a new family" note="You'll be the family head. You can hand that role to someone else later." id="create">
-          <CreateFamilyForm />
+          <CreateFamilyForm month={month} />
         </Card>
         <Card title="Join a family" note="Ask your family head for the 8-character family code." id="join">
-          <JoinFamilyForm />
+          <JoinFamilyForm month={month} />
         </Card>
       </div>
 

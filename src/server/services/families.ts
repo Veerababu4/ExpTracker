@@ -1,20 +1,25 @@
 import "server-only";
 import { randomInt } from "node:crypto";
-import { and, asc, desc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, isNull, sql } from "drizzle-orm";
 import { db } from "@/server/db";
 import { categories, families, familyMembers, joinRequests, sessions, users } from "@/server/db/schema";
 import { hashSecret } from "@/server/auth/hashing";
 import { DEFAULT_CATEGORIES } from "@/lib/expense-options";
+import { todayInIndia, type IsoDate } from "@/lib/rules/dates";
 import { JOIN_CODE_ALPHABET, JOIN_CODE_LENGTH } from "@/lib/rules/join-code";
 import { isUniqueViolation } from "./accounts";
 import { writeAudit } from "./audit";
+import { createPersonalBook, setSharingIn, stopSharingOnLeave } from "./books";
 
 // Family rules (DESIGN §3.2, F1–F10). Every function that changes a family checks the caller's role
 // itself — the pages hiding buttons is only a convenience.
 
 export type Role = "HEAD" | "MEMBER";
 
-export type Membership = { familyId: string; familyName: string; role: Role; joinedAt: Date };
+export type BookKind = "FAMILY" | "PERSONAL";
+
+/** A book the user can open: one of their families, or their personal book "My expenses" (M8, DESIGN §3.8). */
+export type Membership = { familyId: string; familyName: string; role: Role; joinedAt: Date; kind: BookKind };
 
 /** Thrown when someone tries something their role doesn't allow (a tampered form, an old tab…). */
 export class NotAllowedError extends Error {
@@ -26,24 +31,30 @@ export class NotAllowedError extends Error {
 
 // ── Reading ───────────────────────────────────────────────────────────────────
 
-/** Families the user is an active member of, oldest first. */
-export async function myFamilies(userId: string): Promise<Membership[]> {
+/** The user's books: the personal book first, then the families they're an active member of, oldest first. */
+export async function myBooks(userId: string): Promise<Membership[]> {
   return db
     .select({
       familyId: families.id,
       familyName: families.name,
       role: familyMembers.role,
       joinedAt: familyMembers.joinedAt,
+      kind: families.kind,
     })
     .from(familyMembers)
     .innerJoin(families, eq(families.id, familyMembers.familyId))
     .where(and(eq(familyMembers.userId, userId), eq(familyMembers.status, "ACTIVE")))
-    .orderBy(asc(familyMembers.joinedAt));
+    .orderBy(sql`${families.kind} = 'PERSONAL' desc`, asc(familyMembers.joinedAt));
+}
+
+/** Families the user is an active member of, oldest first (not the personal book). */
+export async function myFamilies(userId: string): Promise<Membership[]> {
+  return (await myBooks(userId)).filter((b) => b.kind === "FAMILY");
 }
 
 /**
- * Which family to show (F7): the one chosen in this browser, else the last one used anywhere, else the oldest.
- * Null when the user isn't in any family.
+ * Which book to show (F7): the one chosen in this browser, else the last one used anywhere, else the first
+ * (the personal book). Null only for a list without books.
  */
 export function pickActiveFamily(
   memberships: Membership[],
@@ -82,6 +93,18 @@ export async function assertMember(userId: string, familyId: string): Promise<Ro
   return role;
 }
 
+/** Joining, codes, member logins, head transfer and leaving exist only for families, never for a personal book. */
+async function assertFamilyBook(familyId: string): Promise<void> {
+  const row = await db.query.families.findFirst({ where: eq(families.id, familyId), columns: { kind: true } });
+  if (row?.kind !== "FAMILY") throw new NotAllowedError("That's only possible in a family.");
+}
+
+/** assertHead for family-only actions. */
+async function assertFamilyHead(userId: string, familyId: string): Promise<void> {
+  await assertHead(userId, familyId);
+  await assertFamilyBook(familyId);
+}
+
 export async function getFamily(familyId: string) {
   return db.query.families.findFirst({ where: eq(families.id, familyId) });
 }
@@ -116,7 +139,12 @@ export async function listMembers(familyId: string): Promise<FamilyMember[]> {
 
 // ── Creating and switching ────────────────────────────────────────────────────
 
-export async function createFamily(userId: string, name: string, sessionId?: string): Promise<{ id: string; joinCode: string }> {
+export async function createFamily(
+  userId: string,
+  name: string,
+  sessionId?: string,
+  options: { includeExpenses?: boolean; today?: IsoDate } = {},
+): Promise<{ id: string; joinCode: string }> {
   const family = await insertWithFreshCode(async (joinCode) =>
     db.transaction(async (tx) => {
       const [row] = await tx.insert(families).values({ name, joinCode, createdBy: userId }).returning();
@@ -132,11 +160,13 @@ export async function createFamily(userId: string, name: string, sessionId?: str
         entityId: row.id,
         details: { name },
       });
+      // "Include my expenses in this family from <this month>" (P6).
+      if (options.includeExpenses) await setSharingIn(tx, userId, row.id, options.today ?? todayInIndia(), userId);
       return row;
     }),
   );
   await rememberFamily(userId, family.id, sessionId);
-  return { id: family.id, joinCode: family.joinCode };
+  return { id: family.id, joinCode: family.joinCode! }; // families always have a code
 }
 
 /** Makes `familyId` the one shown in this browser and the default on other devices. */
@@ -151,7 +181,7 @@ async function rememberFamily(userId: string, familyId: string, sessionId?: stri
 }
 
 export async function regenerateJoinCode(headId: string, familyId: string): Promise<string> {
-  await assertHead(headId, familyId);
+  await assertFamilyHead(headId, familyId);
   const row = await insertWithFreshCode(async (joinCode) => {
     const [updated] = await db.update(families).set({ joinCode }).where(eq(families.id, familyId)).returning();
     return updated;
@@ -163,7 +193,7 @@ export async function regenerateJoinCode(headId: string, familyId: string): Prom
     entityType: "family",
     entityId: familyId,
   });
-  return row.joinCode;
+  return row.joinCode!;
 }
 
 export function newJoinCode(): string {
@@ -189,12 +219,15 @@ export type JoinResult =
   | { ok: true; familyName: string }
   | { ok: false; reason: "invalid_code" | "already_member" | "already_pending" };
 
-export async function requestToJoin(userId: string, code: string): Promise<JoinResult> {
+export async function requestToJoin(userId: string, code: string, includeExpenses = false): Promise<JoinResult> {
   const family = await db.query.families.findFirst({ where: eq(families.joinCode, code) });
   if (!family) return { ok: false, reason: "invalid_code" };
   if (await getRole(userId, family.id)) return { ok: false, reason: "already_member" };
   try {
-    const [request] = await db.insert(joinRequests).values({ familyId: family.id, userId }).returning({ id: joinRequests.id });
+    const [request] = await db
+      .insert(joinRequests)
+      .values({ familyId: family.id, userId, includeExpenses })
+      .returning({ id: joinRequests.id });
     await writeAudit(db, {
       familyId: family.id,
       actorId: userId,
@@ -236,7 +269,7 @@ export async function cancelJoinRequest(userId: string, requestId: string): Prom
 
 /** Pending requests for the head to decide. */
 export async function pendingRequests(headId: string, familyId: string) {
-  await assertHead(headId, familyId);
+  await assertFamilyHead(headId, familyId);
   return db
     .select({
       id: joinRequests.id,
@@ -259,15 +292,16 @@ export async function decideJoinRequest(
   familyId: string,
   requestId: string,
   approve: boolean,
+  today: IsoDate = todayInIndia(),
 ): Promise<boolean> {
-  await assertHead(headId, familyId);
+  await assertFamilyHead(headId, familyId);
   return db.transaction(async (tx) => {
     const now = new Date();
     const [request] = await tx
       .update(joinRequests)
       .set({ status: approve ? "APPROVED" : "REJECTED", decidedBy: headId, decidedAt: now })
       .where(and(eq(joinRequests.id, requestId), eq(joinRequests.familyId, familyId), eq(joinRequests.status, "PENDING")))
-      .returning({ userId: joinRequests.userId });
+      .returning({ userId: joinRequests.userId, includeExpenses: joinRequests.includeExpenses });
     if (!request) return false;
     if (approve) {
       // A former member (removed or left) comes back as an ordinary member.
@@ -278,6 +312,13 @@ export async function decideJoinRequest(
           target: [familyMembers.familyId, familyMembers.userId],
           set: { role: "MEMBER", status: "ACTIVE", joinedAt: now, leftAt: null },
         });
+      // A ticked request starts sharing from the approval month (P6).
+      if (request.includeExpenses) await setSharingIn(tx, request.userId, familyId, today, request.userId);
+      // Someone who never picked a book opens the new family next time, not My expenses.
+      await tx
+        .update(users)
+        .set({ lastFamilyId: familyId })
+        .where(and(eq(users.id, request.userId), isNull(users.lastFamilyId)));
     }
     await writeAudit(tx, {
       familyId,
@@ -295,9 +336,17 @@ export async function decideJoinRequest(
 export async function createMemberLogin(
   headId: string,
   familyId: string,
-  input: { username: string; displayName: string; tempPassword: string; mobile?: string; email?: string },
+  input: {
+    username: string;
+    displayName: string;
+    tempPassword: string;
+    mobile?: string;
+    email?: string;
+    includeExpenses?: boolean;
+  },
+  today: IsoDate = todayInIndia(),
 ): Promise<{ ok: true; userId: string } | { ok: false; reason: "username_taken" }> {
-  await assertHead(headId, familyId);
+  await assertFamilyHead(headId, familyId);
   const passwordHash = await hashSecret(input.tempPassword);
   try {
     const userId = await db.transaction(async (tx) => {
@@ -314,6 +363,8 @@ export async function createMemberLogin(
         })
         .returning({ id: users.id });
       await tx.insert(familyMembers).values({ familyId, userId: user.id, role: "MEMBER" });
+      await createPersonalBook(tx, user.id);
+      if (input.includeExpenses) await setSharingIn(tx, user.id, familyId, today, headId);
       await writeAudit(tx, {
         familyId,
         actorId: headId,
@@ -341,7 +392,7 @@ export async function resetMemberPassword(
   memberId: string,
   tempPassword: string,
 ): Promise<void> {
-  await assertHead(headId, familyId);
+  await assertFamilyHead(headId, familyId);
   if (memberId === headId) throw new NotAllowedError("Change your own password on the account page.");
   await assertMember(memberId, familyId);
   const passwordHash = await hashSecret(tempPassword);
@@ -372,7 +423,7 @@ export async function resetMemberPassword(
 // ── Roles and leaving (F8, F9) ────────────────────────────────────────────────
 
 export async function transferHead(headId: string, familyId: string, newHeadId: string): Promise<void> {
-  await assertHead(headId, familyId);
+  await assertFamilyHead(headId, familyId);
   if ((await getRole(newHeadId, familyId)) !== "MEMBER") throw new NotAllowedError("Choose an active member.");
   await db.transaction(async (tx) => {
     // Demote first: the database allows only one active head per family at any moment.
@@ -395,26 +446,34 @@ export async function transferHead(headId: string, familyId: string, newHeadId: 
   });
 }
 
-export async function removeMember(headId: string, familyId: string, memberId: string): Promise<void> {
-  await assertHead(headId, familyId);
+export async function removeMember(
+  headId: string,
+  familyId: string,
+  memberId: string,
+  today: IsoDate = todayInIndia(),
+): Promise<void> {
+  await assertFamilyHead(headId, familyId);
   if (memberId === headId) throw new NotAllowedError("The head can't remove themselves. Make someone else head first.");
   await assertMember(memberId, familyId);
-  await endMembership(familyId, memberId, "REMOVED", headId);
+  await endMembership(familyId, memberId, "REMOVED", headId, today);
 }
 
 export async function leaveFamily(
   userId: string,
   familyId: string,
+  today: IsoDate = todayInIndia(),
 ): Promise<{ ok: true } | { ok: false; reason: "head_must_transfer" }> {
   const role = await assertMember(userId, familyId);
+  await assertFamilyBook(familyId);
   if (role === "HEAD") return { ok: false, reason: "head_must_transfer" };
-  await endMembership(familyId, userId, "LEFT", userId);
+  await endMembership(familyId, userId, "LEFT", userId, today);
   return { ok: true };
 }
 
-/** Past expenses stay in the family (DESIGN F9); only access ends. */
-async function endMembership(familyId: string, userId: string, status: "REMOVED" | "LEFT", actorId: string) {
+/** Past expenses stay in the family (DESIGN F9); only access ends. Later expenses are personal (P7). */
+async function endMembership(familyId: string, userId: string, status: "REMOVED" | "LEFT", actorId: string, today: IsoDate) {
   await db.transaction(async (tx) => {
+    await stopSharingOnLeave(tx, userId, familyId, today, actorId);
     await tx
       .update(familyMembers)
       .set({ status, leftAt: new Date() })

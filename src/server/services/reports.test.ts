@@ -12,6 +12,9 @@ import { exportExpenses, exportHref, familyPeople, monthSummary, monthTrend, PAG
 
 const TODAY = "2026-10-21"; // head window: 1 Aug – 21 Oct
 
+/** Members share their expenses with the family from Jan 2026, so every month used here is shared (M8). */
+const SHARED = { includeExpenses: true, today: "2026-01-01" };
+
 const questions = { question1: "first_school" as const, answer1: "zp", question2: "first_pet" as const, answer2: "tom" };
 
 async function user(username: string) {
@@ -23,10 +26,10 @@ async function user(username: string) {
 async function setup() {
   const head = await user("ravi");
   const member = await user("sita");
-  const { id: familyId, joinCode } = await createFamily(head, "Kumar family");
-  await requestToJoin(member, joinCode);
+  const { id: familyId, joinCode } = await createFamily(head, "Kumar family", undefined, SHARED);
+  await requestToJoin(member, joinCode, true);
   const [req] = await pendingRequests(head, familyId);
-  await decideJoinRequest(head, familyId, req.id, true);
+  await decideJoinRequest(head, familyId, req.id, true, SHARED.today);
   const cats = await listCategories(head, familyId);
   const cat = (name: string) => cats.find((c) => c.name === name)!.id;
   return { head, member, familyId, groceries: cat("Groceries"), fuel: cat("Fuel & transport") };
@@ -76,7 +79,7 @@ describe("searchExpenses", () => {
     const gone = await add(head, familyId, { expenseDate: "2026-10-10", amount: 300_00 });
     await deleteExpense(head, familyId, gone, TODAY);
     const other = await user("gopal");
-    const { id: otherFamily } = await createFamily(other, "Rao family");
+    const { id: otherFamily } = await createFamily(other, "Rao family", undefined, SHARED);
     await add(other, otherFamily, { expenseDate: "2026-10-10", amount: 999_00 });
 
     expect(await searchExpenses(head, familyId, october())).toMatchObject({ count: 0, totalPaise: 0, expenses: [] });
@@ -147,7 +150,7 @@ describe("familyPeople", () => {
   it("lists current members first, then former ones; never people from other families", async () => {
     const { head, member, familyId } = await setup();
     const other = await user("gopal");
-    await createFamily(other, "Rao family");
+    await createFamily(other, "Rao family", undefined, SHARED);
     await leaveFamily(member, familyId);
     expect(await familyPeople(head, familyId)).toEqual([
       { userId: head, displayName: "RAVI", former: false },
@@ -191,7 +194,7 @@ describe("monthTrend", () => {
     const gone = await add(head, familyId, { expenseDate: "2026-10-05", amount: 999_00 });
     await deleteExpense(head, familyId, gone, TODAY);
     const other = await user("gopal");
-    const { id: otherFamily } = await createFamily(other, "Rao family");
+    const { id: otherFamily } = await createFamily(other, "Rao family", undefined, SHARED);
     await addExpense(other, otherFamily, { expenseDate: "2026-10-02", amount: 777_00, note: undefined }, TODAY);
 
     expect(await monthTrend(member, familyId, "2026-10")).toEqual([

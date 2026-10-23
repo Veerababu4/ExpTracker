@@ -46,7 +46,9 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold">Search</h1>
-        <p className="text-sm text-zinc-600">{family.familyName} · everyone&apos;s expenses between two dates (at most one year)</p>
+        <p className="text-sm text-zinc-600">
+          {family.familyName} · {family.kind === "FAMILY" ? "everyone's" : "your"} expenses between two dates (at most one year)
+        </p>
       </div>
 
       {/* key: remount after each search so the fields show the address's values (e.g. after "Clear"). */}
@@ -56,16 +58,18 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
             <TextField label="From" name="from" type="date" min={EARLIEST_DATE} max={today} defaultValue={values.from} errors={errors.from} />
             <TextField label="To" name="to" type="date" min={EARLIEST_DATE} max={today} defaultValue={values.to} errors={errors.to} />
           </div>
-          <div className="grid gap-4 sm:grid-cols-3">
-            <SelectField
-              label="Member"
-              name="member"
-              optional
-              placeholder="Everyone"
-              options={people.map((p) => ({ value: p.userId, label: p.former ? `${p.displayName} (former member)` : p.displayName }))}
-              defaultValue={values.member}
-              errors={errors.member}
-            />
+          <div className={`grid gap-4 ${family.kind === "FAMILY" ? "sm:grid-cols-3" : "sm:grid-cols-2"}`}>
+            {family.kind === "FAMILY" && (
+              <SelectField
+                label="Member"
+                name="member"
+                optional
+                placeholder="Everyone"
+                options={people.map((p) => ({ value: p.userId, label: p.former ? `${p.displayName} (former member)` : p.displayName }))}
+                defaultValue={values.member}
+                errors={errors.member}
+              />
+            )}
             <SelectField
               label="Category"
               name="category"
@@ -114,7 +118,7 @@ export default async function SearchPage({ searchParams }: { searchParams: Promi
           <ExpenseList
             expenses={result.expenses}
             showDate
-            showOwner
+            showOwner={family.kind === "FAMILY"}
             total={{ count: result.count, paise: result.totalPaise }}
             empty="No expenses match this search."
           />

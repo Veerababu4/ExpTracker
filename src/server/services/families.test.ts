@@ -144,7 +144,7 @@ describe("several families (F7)", () => {
   });
 
   it("pickActiveFamily falls back to the last used, then the oldest family", () => {
-    const m = (id: string) => ({ familyId: id, familyName: id, role: "MEMBER" as const, joinedAt: new Date() });
+    const m = (id: string) => ({ familyId: id, familyName: id, role: "MEMBER" as const, joinedAt: new Date(), kind: "FAMILY" as const });
     const list = [m("a"), m("b")];
     expect(pickActiveFamily(list, "gone", "b")?.familyId).toBe("b");
     expect(pickActiveFamily(list, null, null)?.familyId).toBe("a");

@@ -143,6 +143,39 @@ Answers are compared after trimming, lower-casing and collapsing spaces, and sto
 | R3 | Storage: a `receipts` table in PostgreSQL (Neon free = 1 GB per project, Oct 2026). **All receipts of all families together may use at most 500 MB**; when full, new receipts are refused with a message and adding expenses keeps working. |
 | R4 | **Site admin** (usernames in the `ADMIN_USERNAMES` setting — not a family role) has a `/admin` page: receipt space used (total, per family — sizes only), the whole database size, and an **on/off switch** for new receipts (takes effect at once, logged). While off, saved receipts can still be opened and removed. |
 
+### 3.8 My expenses and monthly sharing (M8)
+
+Everyone gets a private **"My expenses"** book, with or without a family. A family member decides, month by month, whether
+their expenses are also in one family's book.
+
+| ID | Requirement |
+|---|---|
+| P1 | Every user has exactly one **personal book**, named "My expenses", created at registration and with head-created logins (existing users get one in the M8 migration). Nobody else can see it. It has its own categories (the default list), budgets, alert limits and receipts; its owner has the head's rights there (edit window = current + 2 previous months). |
+| P2 | **Sharing**: for any month, a person's expenses are either *personal only* or *in exactly one family*. The default is personal only. A switch ("Include my expenses in this family" / "Stop including") takes effect **from the current month**; the current month's expenses already entered move with it (into or out of the family); earlier months never change. Including family B while A is on switches A off from that month. No head approval needed; every switch is logged. |
+| P3 | In a personal-only month the family sees **nothing** of that person's expenses: lists, totals, budgets, charts, CSV. The family's members list shows "Personal only since Oct 2026" (or "Sharing since …"). |
+| P4 | **Adding** is always "my expense": it is filed in the book that owns the date's month (the shared family, else the personal book). The add page shows where it will go, and its categories, alert limits and date window follow that book; changing the date re-reads them. |
+| P5 | Editing an expense to a date in a month that belongs to a different book is refused with a message ("delete it and add it again"); nothing moves silently. |
+| P6 | Create family, join request and head-created login show a checkbox **"Include my (their) expenses in this family from <this month>"**, unticked by default. A ticked join request takes effect when the head approves it, from the approval month. |
+| P7 | Leaving or being removed moves nothing (F9: past expenses stay in the family); from that month on the person's expenses are personal. Re-joining needs the checkbox again. |
+| P8 | The switcher in the header always shows **My expenses** first, then the families. In My expenses the Month and Search pages show **all my own expenses**: the personal book plus what I shared with families I'm still in, grouped by category name, with a "Where" breakdown (My expenses / family name) instead of "By member". My budget applies to that whole total. |
+| P9 | Go-live: existing members start **personal only from the go-live month** — their go-live-month expenses move from the family to My expenses; earlier months stay in the family. Each member opts back in on the family page. |
+| P10 | **Home page for visitors** (`/home`; a logged-out visit to `/` goes there): "Track your personal or family expenses here — enter each expense once, see where the money goes, spend more carefully next month", what the site does (My expenses, family sharing, budgets and alerts, month charts), a rotating money-wisdom quote (next/previous, pauses for reduce-motion), a small "little savings add up" calculator (₹ a day → a month → a year), and Log in / Create account buttons. Logged-in users see a "thought for today" quote on the Add page (one per day). |
+
+How it is built (details in §10.9 when done):
+
+- A personal book is a `families` row with `kind = 'PERSONAL'` (families are `'FAMILY'`): one member (the owner, role
+  HEAD), no join code. Categories, budgets, limits, receipts, change log and edit rules all reuse the family code.
+  Personal books never appear in family lists, joining, head transfer, leaving or member logins; the admin page
+  shows them as one "Personal books" line.
+- New table `expense_sharing (user_id, from_month, family_id null = personal, set_by, set_at)`, one row per switch.
+  The book for month M = the latest row with from_month ≤ M, if the person is still an active member of that
+  family; otherwise the personal book.
+- Moving an expense changes its `family_id` (and its receipt's). Its category is matched by name in the new book:
+  moving into My expenses copies a missing category into the personal book; moving into a family uses
+  Uncategorised when the family has no such category. One `EXPENSE_MOVED` log entry in each book. The change log
+  of an expense follows the expense.
+- The expense page opens any expense the viewer can see (its own book is looked up), not only the active one's.
+
 ---
 
 ## 4. Business rules
@@ -196,9 +229,10 @@ All ids are UUIDs; all tables have `created_at`; times are `timestamptz` (UTC); 
 | `users` | id, username (unique), display_name, mobile?, email?, password_hash, must_change_password, failed_logins, locked_until, recovery_failures, recovery_locked_until, last_family_id? | username stored lower-case |
 | `security_answers` | user_id, slot (1/2), question_code, answer_hash | PK (user_id, slot); question codes differ |
 | `sessions` | id (= SHA-256 of the cookie token), user_id, active_family_id?, expires_at, last_seen_at | cookie holds the random token, DB only its hash |
-| `families` | id, name, join_code (unique), created_by | |
+| `families` | id, name, kind (`FAMILY`/`PERSONAL`, M8), join_code? (unique), created_by | a family has a join code, a personal book ("My expenses") none (check); one personal book per user (partial unique index) |
 | `family_members` | family_id, user_id, role, status, joined_at, left_at?, high_alert_paise?, very_high_alert_paise? | PK (family_id, user_id); partial unique index → one active HEAD per family; null limit = default |
-| `join_requests` | id, family_id, user_id, status (PENDING/APPROVED/REJECTED/CANCELLED), decided_by?, decided_at? | partial unique index → one PENDING per (family, user) |
+| `join_requests` | id, family_id, user_id, status (PENDING/APPROVED/REJECTED/CANCELLED), include_expenses, decided_by?, decided_at? | partial unique index → one PENDING per (family, user); include_expenses = the M8 checkbox, applied at approval |
+| `expense_sharing` | user_id, from_month (1st), family_id? (null = personal only), set_by?, set_at | M8: PK (user_id, from_month); one row per switch; the book for month M = latest row ≤ M while still an active member |
 | `categories` | id, family_id, name, hidden, sort_order | unique (family_id, lower(name)); defaults copied in when a family is created |
 | `expenses` | id, family_id, owner_id, expense_date, amount_paise, currency, category_id?, payment_mode?, note?, created_by, updated_by?, updated_at?, deleted_at?, deleted_by? | index (family_id, expense_date) where not deleted; check amount 100..100000000 |
 | `budgets` | id, family_id, month (1st of month), category_id? (null = family total), amount_paise, set_by, updated_at | unique (family_id, month, category_id) `NULLS NOT DISTINCT`; checks: month is the 1st, amount ₹1 – ₹1,00,00,000; no row = no budget |
@@ -217,14 +251,15 @@ scripts); `npm run db:migrate` applies them.
 |---|---|---|
 | `/login`, `/register`, `/forgot-password` | everyone | M1 |
 | `/first-login` | user with temporary password | set new password + security questions |
-| `/welcome` | user without a family | create a family / join with code / my requests |
+| `/home` | everyone | M8: home page for visitors (P10); a logged-out `/` comes here |
+| `/welcome` | user | your families / create a family / join with code / my requests; new accounts land here |
 | `/expenses/new` | member | add form + the day's entries (home page after login) |
 | `/expenses/[id]` | member | view / edit / delete / receipt / change log (head) |
 | `/receipts/[id]` | member of that family | the receipt file (Route Handler; others get "not found") |
 | `/month`, `/month/[yyyy-mm]` | member | monthly view: total and budget status, totals by category (with category budgets) / member / payment mode (each links to the matching search), list, CSV download; charts: category rows as bars on one scale (budget ticks), day by day, last 6 months. `/month` → current month |
 | `/search` | member | date range search; filters in the address (`?from=…&to=…&member=…&category=…&mode=…&page=…`); CSV download of the whole result |
 | `/export/expenses` | member of that family | CSV file (Route Handler) for `?family=…` + the search fields; others get "not found" |
-| `/family` | member | members, join code (head), requests (head), create member login (head), transfer head, leave/remove |
+| `/family` | member | members (with sharing labels), "Your expenses" sharing switch, join code (head), requests (head), create member login (head), transfer head, leave/remove. With My expenses open: the sharing switch for every family + the book's settings |
 | `/family/limits` | head (members read own) | alert limits |
 | `/family/categories` | head | categories |
 | `/family/budget` | head (members see a note) | budgets: `?month=yyyy-mm`, 2 months back to 12 ahead |
@@ -304,6 +339,7 @@ personal, non-commercial use; requests are capped at 4.5 MB (receipts are at mos
 | M5 | Search between dates + monthly view with totals | ✅ `c2763c3` |
 | M6 | Budgets, charts, CSV export, mobile polish | ✅ `0898b23` (part 1) + `bd1f479` (part 2) |
 | M7 | Deploy to Vercel + Neon, production checks | ✅ `8e67a54` (merged `ba733fb`) — live at https://exptracker1.vercel.app |
+| M8 | My expenses (personal book for everyone) + monthly sharing with one family (§3.8). Part 1: schema, migration, sharing switch, add/edit routing, switcher. Part 2: My-expenses month/search/CSV/charts/budgets across books, admin, docs | 🟡 part 1 built (not committed) |
 
 Each milestone: build → tests → browser check → summary → user reviews → commit only when asked.
 

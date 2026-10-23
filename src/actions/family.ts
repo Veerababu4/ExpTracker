@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { invalid, keepValues, readForm, type FormState } from "@/lib/form-state";
 import { familyNameSchema, joinCodeSchema, memberLoginSchema, resetPasswordSchema, uuidSchema } from "@/lib/validation/family";
 import { requireUser } from "@/server/auth/session";
+import { setSharing } from "@/server/services/books";
 import {
   cancelJoinRequest,
   createFamily,
@@ -37,12 +38,17 @@ function idFrom(formData: FormData, name: string): string {
   return parsed.data;
 }
 
+/** The "Include my expenses in this family from <this month>" checkbox (DESIGN §3.8 P6); unticked by default. */
+function includeExpenses(formData: FormData): boolean {
+  return formData.get("includeExpenses") === "on";
+}
+
 export async function createFamilyAction(_prev: FormState, formData: FormData): Promise<FormState> {
   const user = await requireUser();
   const form = readForm(formData, ["name"]);
   const parsed = familyNameSchema.safeParse(form);
   if (!parsed.success) return invalid(parsed.error, form);
-  await createFamily(user.id, parsed.data.name, user.sessionId);
+  await createFamily(user.id, parsed.data.name, user.sessionId, { includeExpenses: includeExpenses(formData) });
   refreshLayout();
   redirect("/family?created=1");
 }
@@ -53,7 +59,7 @@ export async function joinFamilyAction(_prev: FormState, formData: FormData): Pr
   const parsed = joinCodeSchema.safeParse(form);
   if (!parsed.success) return invalid(parsed.error, form);
 
-  const result = await requestToJoin(user.id, parsed.data.code);
+  const result = await requestToJoin(user.id, parsed.data.code, includeExpenses(formData));
   if (!result.ok) {
     const messages = {
       invalid_code: "No family has this code. Check it with your family head — codes can be changed.",
@@ -82,6 +88,18 @@ export async function switchFamilyAction(formData: FormData): Promise<void> {
   redirect("/");
 }
 
+/**
+ * The sharing switch (P2): `familyId` = include my expenses in that family from this month, "personal" = keep them
+ * in My expenses only. This month's expenses move with it; the family pages and the header change too.
+ */
+export async function setSharingAction(formData: FormData): Promise<void> {
+  const user = await requireUser();
+  const target = formData.get("familyId") === "personal" ? null : idFrom(formData, "familyId");
+  await setSharing(user.id, target);
+  refreshLayout();
+  refresh();
+}
+
 export async function regenerateJoinCodeAction(formData: FormData): Promise<void> {
   const user = await requireUser();
   await regenerateJoinCode(user.id, idFrom(formData, "familyId"));
@@ -103,7 +121,7 @@ export async function createMemberLoginAction(_prev: FormState, formData: FormDa
   const parsed = memberLoginSchema.safeParse(form);
   if (!parsed.success) return invalid(parsed.error, values);
 
-  const result = await createMemberLogin(user.id, familyId, parsed.data);
+  const result = await createMemberLogin(user.id, familyId, { ...parsed.data, includeExpenses: includeExpenses(formData) });
   if (!result.ok) return { fieldErrors: { username: ["This username is taken. Try another."] }, values };
   refresh();
   return {

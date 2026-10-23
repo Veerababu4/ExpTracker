@@ -10,12 +10,15 @@ export function ExpenseList({
   expenses,
   showDate = false,
   showOwner = false,
+  showBook = false,
   empty = "No expenses.",
   total,
 }: {
   expenses: ExpenseView[];
   showDate?: boolean;
   showOwner?: boolean;
+  /** Name the book each one is in (My expenses or the family) — for lists that mix books (M8). */
+  showBook?: boolean;
   empty?: string;
   /** Count and total of a whole result when the list shows only one page of it. */
   total?: { count: number; paise: number };
@@ -45,6 +48,7 @@ export function ExpenseList({
                   {[
                     showDate && formatIsoDay(e.expenseDate),
                     showOwner && ownerLabel(e),
+                    showBook && e.bookName,
                     e.paymentMode && PAYMENT_MODES[e.paymentMode],
                     e.receipt && "📎 Receipt",
                     e.note,

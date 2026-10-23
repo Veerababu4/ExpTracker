@@ -12,6 +12,9 @@ import { attachReceipt, receiptFile, receiptUsage, removeReceipt, setReceiptsEna
 
 const TODAY = "2026-10-21"; // member window: 1–21 Oct; head window: 1 Aug – 21 Oct
 
+/** Members share their expenses with the family from Jan 2026, so every month used here is shared (M8). */
+const SHARED = { includeExpenses: true, today: "2026-01-01" };
+
 const questions = { question1: "first_school" as const, answer1: "zp", question2: "first_pet" as const, answer2: "tom" };
 
 const jpeg = (size = 1000) => Buffer.concat([Buffer.from([0xff, 0xd8, 0xff, 0xe0]), Buffer.alloc(size - 4, 1)]);
@@ -26,10 +29,10 @@ async function user(username: string) {
 async function setup() {
   const head = await user("ravi");
   const member = await user("sita");
-  const { id: familyId, joinCode } = await createFamily(head, "Kumar family");
-  await requestToJoin(member, joinCode);
+  const { id: familyId, joinCode } = await createFamily(head, "Kumar family", undefined, SHARED);
+  await requestToJoin(member, joinCode, true);
   const [req] = await pendingRequests(head, familyId);
-  await decideJoinRequest(head, familyId, req.id, true);
+  await decideJoinRequest(head, familyId, req.id, true, SHARED.today);
   return { head, member, familyId };
 }
 
@@ -98,7 +101,7 @@ describe("who can see a receipt", () => {
     const receiptId = (await receiptOf(head, familyId, id))!.id;
 
     const stranger = await user("gopal");
-    await createFamily(stranger, "Rao family");
+    await createFamily(stranger, "Rao family", undefined, SHARED);
     expect(await receiptFile(stranger, receiptId)).toBeNull();
     expect(await receiptFile(member, receiptId)).not.toBeNull();
 
