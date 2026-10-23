@@ -339,7 +339,7 @@ personal, non-commercial use; requests are capped at 4.5 MB (receipts are at mos
 | M5 | Search between dates + monthly view with totals | ✅ `c2763c3` |
 | M6 | Budgets, charts, CSV export, mobile polish | ✅ `0898b23` (part 1) + `bd1f479` (part 2) |
 | M7 | Deploy to Vercel + Neon, production checks | ✅ `8e67a54` (merged `ba733fb`) — live at https://exptracker1.vercel.app |
-| M8 | My expenses (personal book for everyone) + monthly sharing with one family (§3.8). Part 1: schema, migration, sharing switch, add/edit routing, switcher. Part 2: My-expenses month/search/CSV/charts/budgets across books, admin, docs | ✅ part 1 `de9443a` (PR #9, merged `248a3b7`, Neon at `0005` on 23 Oct 2026) + part 2 (PR open) |
+| M8 | My expenses (personal book for everyone) + monthly sharing with one family (§3.8). Part 1: schema, migration, sharing switch, add/edit routing, switcher. Part 2: My-expenses month/search/CSV/charts/budgets across books, admin, docs | ✅ part 1 `de9443a` (PR #9) + part 2 `4c39e51` (PR #10), merged `a361706`; Neon at `0005` since 23 Oct 2026 |
 
 Each milestone: build → tests → browser check → summary → user reviews → commit only when asked.
 
