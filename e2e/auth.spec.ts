@@ -12,7 +12,7 @@ test("register, log out, log back in", async ({ page }) => {
   await register(page, username);
   await logout(page);
   await login(page, username.toUpperCase()); // usernames are not case-sensitive
-  await expect(page.getByRole("heading", { name: "Welcome, Ravi Kumar" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Add expense" })).toBeVisible(); // My expenses (M8)
 });
 
 test("register shows field errors and keeps what was typed", async ({ page }) => {
@@ -86,11 +86,11 @@ test("forgot password with security questions", async ({ page }) => {
   await page.getByLabel("New password", { exact: true }).fill("newpass123");
   await page.getByLabel("Confirm new password", { exact: true }).fill("newpass123");
   await page.getByRole("button", { name: "Set new password" }).click();
-  await expect(page.getByRole("heading", { name: "Welcome, Ravi Kumar" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Add expense" })).toBeVisible(); // My expenses (M8)
 
   await logout(page);
   await login(page, username, "newpass123");
-  await expect(page.getByRole("heading", { name: "Welcome, Ravi Kumar" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Add expense" })).toBeVisible();
 });
 
 test("unknown username still shows two questions", async ({ page }) => {
@@ -140,14 +140,14 @@ test("account page: profile, password and questions", async ({ page }) => {
   await expect(page.getByText(/Current: “What was your childhood nickname/)).toBeVisible();
   await logout(page);
   await login(page, username, "changed123");
-  await expect(page.getByRole("heading", { name: "Welcome, Ravi K" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Add expense" })).toBeVisible();
 });
 
 test("pages behind login redirect to the login page", async ({ page }) => {
   await page.goto("/account");
   await expect(page).toHaveURL(/\/login$/);
   await page.goto("/");
-  await expect(page).toHaveURL(/\/login$/);
+  await expect(page).toHaveURL(/\/home$/); // the home page for visitors (M8, P10)
 });
 
 test("temporary password must be replaced at first login", async ({ page }) => {

@@ -77,7 +77,10 @@ export function BudgetForm({
   totalPaise,
   boxes,
   previous,
+  personal = false,
 }: {
+  /** My expenses (M8): the wording speaks of "your" total, not the family's. */
+  personal?: boolean;
   familyId: string;
   month: string;
   monthName: string;
@@ -128,8 +131,8 @@ export function BudgetForm({
       <FormMessage state={state} />
 
       <AmountRow
-        label="Family total"
-        hint="Everything the family spends in the month"
+        label={personal ? "Monthly total" : "Family total"}
+        hint={personal ? "Everything you spend in the month" : "Everything the family spends in the month"}
         name={TOTAL_FIELD}
         value={values[TOTAL_FIELD] ?? ""}
         onChange={change(TOTAL_FIELD)}
@@ -159,7 +162,7 @@ export function BudgetForm({
       <div aria-live="polite" className="flex flex-col gap-2">
         {overTotal !== null && typedTotal !== null && (
           <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-900">
-            Note: the category budgets add up to {formatRupees(overTotal)}, more than the family total of{" "}
+            Note: the category budgets add up to {formatRupees(overTotal)}, more than the {personal ? "monthly" : "family"} total of{" "}
             {formatRupees(typedTotal)}. That&apos;s allowed.
           </p>
         )}

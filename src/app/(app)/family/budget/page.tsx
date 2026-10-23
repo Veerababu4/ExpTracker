@@ -65,7 +65,7 @@ export default async function BudgetPage({ searchParams }: { searchParams: Promi
       <div>
         <h1 className="text-2xl font-semibold">Budget</h1>
         <p className="text-sm text-zinc-600">
-          Set how much the family plans to spend in a month (in ₹), in total and per category. Leave a box empty for no
+          Set how much {family.kind === "FAMILY" ? "the family plans" : "you plan"} to spend in a month (in ₹), in total and per category. Leave a box empty for no
           budget. Spending can go over — the month page turns amber at 80% and red above 100%.
         </p>
       </div>
@@ -115,6 +115,7 @@ export default async function BudgetPage({ searchParams }: { searchParams: Promi
       >
         {/* key: a fresh form (and fresh boxes) for each month. */}
         <BudgetForm
+          personal={family.kind === "PERSONAL"}
           key={month}
           familyId={family.familyId}
           month={month}

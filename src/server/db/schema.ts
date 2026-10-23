@@ -75,16 +75,27 @@ export const sessions = pgTable(
 export const memberRole = pgEnum("member_role", ["HEAD", "MEMBER"]);
 export const memberStatus = pgEnum("member_status", ["ACTIVE", "REMOVED", "LEFT"]);
 export const joinRequestStatus = pgEnum("join_request_status", ["PENDING", "APPROVED", "REJECTED", "CANCELLED"]);
+/** M8: a FAMILY is shared by its members; a PERSONAL book ("My expenses") belongs to one user (DESIGN §3.8). */
+export const bookKind = pgEnum("book_kind", ["FAMILY", "PERSONAL"]);
 
-export const families = pgTable("families", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  name: text("name").notNull(),
-  joinCode: text("join_code").notNull().unique(), // 8 characters, stored without the dash
-  createdBy: uuid("created_by")
-    .notNull()
-    .references(() => users.id),
-  createdAt: createdAt(),
-});
+export const families = pgTable(
+  "families",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    name: text("name").notNull(),
+    kind: bookKind("kind").notNull().default("FAMILY"),
+    joinCode: text("join_code").unique(), // 8 characters, stored without the dash; personal books have none
+    createdBy: uuid("created_by")
+      .notNull()
+      .references(() => users.id),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    check("families_join_code_kind", sql`(${t.kind} = 'FAMILY') = (${t.joinCode} is not null)`),
+    // One personal book per user.
+    uniqueIndex("families_one_personal").on(t.createdBy).where(sql`${t.kind} = 'PERSONAL'`),
+  ],
+);
 
 export const familyMembers = pgTable(
   "family_members",
@@ -122,6 +133,8 @@ export const joinRequests = pgTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     status: joinRequestStatus("status").notNull().default("PENDING"),
+    /** M8: "Include my expenses in this family" was ticked; applied when the head approves. */
+    includeExpenses: boolean("include_expenses").notNull().default(false),
     createdAt: createdAt(),
     decidedBy: uuid("decided_by").references(() => users.id),
     decidedAt: timestamp("decided_at", { withTimezone: true }),
@@ -264,5 +277,29 @@ export const budgets = pgTable(
     unique("budgets_family_month_category").on(t.familyId, t.month, t.categoryId).nullsNotDistinct(),
     check("budgets_first_of_month", sql`extract(day from ${t.month}) = 1`),
     check("budgets_amount_range", sql`${t.amountPaise} between 100 and 1000000000`),
+  ],
+);
+
+// ── M8: sharing my expenses with a family ─────────────────────────────────────
+
+/**
+ * Where a person's expenses go, month by month (DESIGN §3.8 P2): one row per switch. The book for month M is the
+ * latest row with from_month ≤ M — that family while the person is still an active member, else the personal book.
+ * family_id null = personal only. No rows = personal only.
+ */
+export const expenseSharing = pgTable(
+  "expense_sharing",
+  {
+    userId: uuid("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    fromMonth: date("from_month", { mode: "string" }).notNull(), // always the 1st: "2026-10-01"
+    familyId: uuid("family_id").references(() => families.id, { onDelete: "cascade" }),
+    setBy: uuid("set_by").references(() => users.id, { onDelete: "set null" }),
+    setAt: timestamp("set_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    primaryKey({ columns: [t.userId, t.fromMonth] }),
+    check("expense_sharing_first_of_month", sql`extract(day from ${t.fromMonth}) = 1`),
   ],
 );

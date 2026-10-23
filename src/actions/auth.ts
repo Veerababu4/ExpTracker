@@ -64,7 +64,7 @@ export async function registerAction(_prev: FormState, formData: FormData): Prom
     return { fieldErrors: { username: ["This username is taken. Try another."] }, values };
   }
   await startSession(result.userId);
-  redirect("/");
+  redirect("/welcome"); // new accounts: My expenses is ready, or create/join a family (M8)
 }
 
 export async function loginAction(_prev: FormState, formData: FormData): Promise<FormState> {

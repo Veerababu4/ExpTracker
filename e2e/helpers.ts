@@ -1,4 +1,5 @@
 import { expect, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { Pool } from "pg";
 
 export const PASSWORD = "secret123";
 
@@ -49,29 +50,58 @@ export async function closeExtraPages() {
 
 // ── Families ──
 
-export async function createFamily(page: Page, name: string): Promise<string> {
+/**
+ * Creates a family. `include` ticks "Include my expenses in this family" (M8) — on by default here, so the older
+ * journeys keep seeing the head's expenses in the family.
+ */
+export async function createFamily(page: Page, name: string, include = true): Promise<string> {
   await page.goto("/welcome");
   await page.getByLabel("Family name").fill(name);
+  if (include) await page.locator("#create-title ~ div").getByRole("checkbox", { name: /Include my expenses/ }).check();
   await page.getByRole("button", { name: "Create family" }).click();
   await expect(page.getByRole("heading", { name, level: 1 })).toBeVisible();
   await expect(page.getByText("Family created.")).toBeVisible();
   return (await page.getByTestId("join-code").innerText()).trim();
 }
 
-export async function askToJoin(page: Page, code: string) {
+/** Asks to join; `include` ticks "Include my expenses in this family" (on by default here, see createFamily). */
+export async function askToJoin(page: Page, code: string, include = true) {
   await page.goto("/welcome");
   await page.getByLabel("Family code").fill(code.toLowerCase()); // codes aren't case-sensitive
+  if (include) await page.locator("#join-title ~ div").getByRole("checkbox", { name: /Include my expenses/ }).check();
   await page.getByRole("button", { name: "Ask to join" }).click();
 }
 
-/** The add-expense home page of the given family is showing. */
-export async function expectHome(page: Page, familyName: string) {
+/** The add-expense page of the given book (a family or "My expenses") is showing. */
+export async function expectHome(page: Page, bookName: string) {
   await expect(page.getByRole("heading", { name: "Add expense" })).toBeVisible();
-  await expect(page.getByText(`${familyName} · you can use dates from`)).toBeVisible();
+  await expect(page.getByText(`${bookName} · you can use dates from`)).toBeVisible();
 }
 
 export function memberRow(page: Page, username: string) {
   return page.getByRole("listitem").filter({ hasText: `@${username}` });
+}
+
+/**
+ * Test set-up: the user's expenses have been in their (only) family since `month` ("2026-09"), as if they had
+ * ticked "include" back then. The app itself only switches from the current month (M8, DESIGN §3.8 P2).
+ */
+export async function shareSince(username: string, month: string) {
+  const pool = new Pool({ connectionString: process.env.TEST_DATABASE_URL });
+  try {
+    await pool.query(
+      `insert into expense_sharing (user_id, from_month, family_id)
+       select u.id, $2::date, m.family_id
+       from users u
+       join family_members m on m.user_id = u.id and m.status = 'ACTIVE'
+       join families f on f.id = m.family_id and f.kind = 'FAMILY'
+       where u.username = $1
+       on conflict (user_id, from_month) do update set family_id = excluded.family_id`,
+      [username, `${month}-01`],
+    );
+  } finally {
+    await pool.end();
+  }
 }
 
 /** Head approves a pending join request on the family page. */

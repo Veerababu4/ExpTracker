@@ -146,14 +146,17 @@ export default async function MonthPage({ params }: { params: Promise<{ month: s
 
       {s.count > 0 && (
         <div className="grid items-start gap-6 md:grid-cols-2">
-          <Card title="By member" id="by-member">
-            <Totals
-              groups={s.byMember}
-              total={s.totalPaise}
-              label={(g) => (g.former ? `${g.name} (former member)` : (g.name ?? ""))}
-              href={(g) => searchFor({ member: g.key })}
-            />
-          </Card>
+          {/* My expenses has one person, so no "By member" (M8). */}
+          {family.kind === "FAMILY" && (
+            <Card title="By member" id="by-member">
+              <Totals
+                groups={s.byMember}
+                total={s.totalPaise}
+                label={(g) => (g.former ? `${g.name} (former member)` : (g.name ?? ""))}
+                href={(g) => searchFor({ member: g.key })}
+              />
+            </Card>
+          )}
           <Card title="By payment mode" id="by-mode">
             <Totals
               groups={s.byMode}
@@ -176,7 +179,7 @@ export default async function MonthPage({ params }: { params: Promise<{ month: s
           ) : undefined
         }
       >
-        <ExpenseList expenses={s.expenses} showDate showOwner empty={`No expenses in ${formatMonth(month)}.`} />
+        <ExpenseList expenses={s.expenses} showDate showOwner={family.kind === "FAMILY"} empty={`No expenses in ${formatMonth(month)}.`} />
       </Card>
     </div>
   );

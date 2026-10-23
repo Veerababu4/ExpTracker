@@ -13,6 +13,9 @@ import { createFamily, decideJoinRequest, NotAllowedError, pendingRequests, requ
 
 const TODAY = "2026-10-21"; // member window: 1–21 Oct; head window: 1 Aug – 21 Oct
 
+/** Members share their expenses with the family from Jan 2026, so every month used here is shared (M8). */
+const SHARED = { includeExpenses: true, today: "2026-01-01" };
+
 const questions = { question1: "first_school" as const, answer1: "zp", question2: "first_pet" as const, answer2: "tom" };
 
 async function user(username: string) {
@@ -24,10 +27,10 @@ async function user(username: string) {
 async function setup() {
   const head = await user("ravi");
   const member = await user("sita");
-  const { id: familyId, joinCode } = await createFamily(head, "Kumar family");
-  await requestToJoin(member, joinCode);
+  const { id: familyId, joinCode } = await createFamily(head, "Kumar family", undefined, SHARED);
+  await requestToJoin(member, joinCode, true);
   const [req] = await pendingRequests(head, familyId);
-  await decideJoinRequest(head, familyId, req.id, true);
+  await decideJoinRequest(head, familyId, req.id, true, SHARED.today);
   const cats = await listCategories(head, familyId);
   return { head, member, familyId, groceries: cats.find((c) => c.name === "Groceries")!.id };
 }
@@ -90,7 +93,7 @@ describe("adding", () => {
   it("refuses another family's category or a hidden one", async () => {
     const { head, member, familyId, groceries } = await setup();
     const other = await user("ghost");
-    const { id: otherFamily } = await createFamily(other, "Other");
+    const { id: otherFamily } = await createFamily(other, "Other", undefined, SHARED);
     const [otherCat] = await listCategories(other, otherFamily);
     expect(await addExpense(member, familyId, input({ categoryId: otherCat.id }), TODAY)).toEqual({ ok: false, reason: "bad_category" });
     await setCategoryHidden(head, familyId, groceries, true);
@@ -160,7 +163,7 @@ describe("editing and deleting", () => {
     const id = await added(member, familyId);
     expect(await deleteExpense(member, familyId, id, TODAY)).toEqual({ ok: true, id });
     expect(await getExpense(member, familyId, id, TODAY)).toBeNull();
-    expect(await entriesForDay(member, familyId, TODAY)).toEqual([]);
+    expect(await entriesForDay(member, TODAY)).toEqual([]);
     const row = await db.query.expenses.findFirst({ where: eq(expenses.id, id) });
     expect(row?.deletedBy).toBe(member);
     expect((await expenseHistory(head, familyId, id))[0].action).toBe("EXPENSE_DELETED");
@@ -179,7 +182,7 @@ describe("editing and deleting", () => {
     await added(member, familyId, { amount: 1000 });
     await added(member, familyId, { amount: 2000, expenseDate: "2026-10-20" });
     await added(head, familyId, { amount: 3000 });
-    expect((await entriesForDay(member, familyId, TODAY)).map((e) => e.amountPaise)).toEqual([1000]);
+    expect((await entriesForDay(member, TODAY)).map((e) => e.amountPaise)).toEqual([1000]);
   });
 });
 

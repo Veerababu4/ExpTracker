@@ -6,6 +6,7 @@ import { hashSecret, verifyAgainstDummy, verifySecret } from "@/server/auth/hash
 import { keyedHash, newSessionToken, sessionIdFor } from "@/server/auth/tokens";
 import { QUESTION_CODES, type QuestionCode } from "@/lib/security-questions";
 import { SESSION_DAYS } from "@/lib/session-cookie";
+import { createPersonalBook } from "./books";
 
 // Account rules (DESIGN §3.1). No cookies or redirects here — those belong to the actions — so every
 // function can be tested straight against the database. `now` is a parameter so tests can move the clock.
@@ -53,6 +54,7 @@ export async function registerUser(
         })
         .returning({ id: users.id });
       await tx.insert(securityAnswers).values(answerRows.map((a) => ({ ...a, userId: row.id })));
+      await createPersonalBook(tx, row.id); // "My expenses" (DESIGN §3.8 P1)
       return row.id;
     });
     return { ok: true, userId };

@@ -10,6 +10,9 @@ import { createFamily, decideJoinRequest, NotAllowedError, pendingRequests, requ
 
 const TODAY = "2026-10-22"; // budgets allowed for 2026-08 … 2027-10
 
+/** Members share their expenses with the family from Jan 2026, so every month used here is shared (M8). */
+const SHARED = { includeExpenses: true, today: "2026-01-01" };
+
 const questions = { question1: "first_school" as const, answer1: "zp", question2: "first_pet" as const, answer2: "tom" };
 
 async function user(username: string) {
@@ -21,10 +24,10 @@ async function user(username: string) {
 async function setup() {
   const head = await user("ravi");
   const member = await user("sita");
-  const { id: familyId, joinCode } = await createFamily(head, "Kumar family");
-  await requestToJoin(member, joinCode);
+  const { id: familyId, joinCode } = await createFamily(head, "Kumar family", undefined, SHARED);
+  await requestToJoin(member, joinCode, true);
   const [req] = await pendingRequests(head, familyId);
-  await decideJoinRequest(head, familyId, req.id, true);
+  await decideJoinRequest(head, familyId, req.id, true, SHARED.today);
   const cats = await listCategories(head, familyId);
   const cat = (name: string) => cats.find((c) => c.name === name)!.id;
   return { head, member, familyId, groceries: cat("Groceries"), fuel: cat("Fuel & transport") };
@@ -110,7 +113,7 @@ describe("setMonthBudget / monthBudget", () => {
   it("refuses another family's category, accepts a hidden one of its own", async () => {
     const { head, familyId, groceries } = await setup();
     const other = await user("lata");
-    const { id: otherFamily } = await createFamily(other, "Rao family");
+    const { id: otherFamily } = await createFamily(other, "Rao family", undefined, SHARED);
     const [theirs] = await listCategories(other, otherFamily);
 
     expect(await setMonthBudget(head, familyId, "2026-10", { totalPaise: null, categories: { [theirs.id]: 5_000_00 } }, TODAY)).toEqual({

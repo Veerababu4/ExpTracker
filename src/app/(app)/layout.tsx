@@ -7,7 +7,7 @@ import { Brand } from "@/components/brand";
 import { FamilySwitcher } from "@/components/actions";
 import { getCurrentUser } from "@/server/auth/session";
 import { isSiteAdmin } from "@/server/auth/site-admin";
-import { myFamilies, pickActiveFamily } from "@/server/services/families";
+import { myBooks, pickActiveFamily } from "@/server/services/families";
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   return (
@@ -52,8 +52,9 @@ async function Header() {
   // While a temporary password is in use, only logging out is offered.
   if (user.mustChangePassword) return <HeaderShell right={logout} />;
 
-  const families = await myFamilies(user.id);
-  const active = pickActiveFamily(families, user.activeFamilyId, user.lastFamilyId);
+  // My expenses first, then the families (M8): the switcher picks the book the pages show.
+  const books = await myBooks(user.id);
+  const active = pickActiveFamily(books, user.activeFamilyId, user.lastFamilyId);
   // Site admins get an extra link: in the main nav when they're in a family, otherwise next to their name.
   const adminLink = isSiteAdmin(user.username) && <NavLink href="/admin">Admin</NavLink>;
 
@@ -76,8 +77,8 @@ async function Header() {
         active && (
           <>
             <nav aria-label="Main" className="-mx-1 flex flex-wrap items-center gap-x-1 gap-y-2 pb-3 text-sm">
-              {families.length > 1 ? (
-                <FamilySwitcher action={switchFamilyAction} families={families} current={active.familyId} />
+              {books.length > 1 ? (
+                <FamilySwitcher action={switchFamilyAction} families={books} current={active.familyId} />
               ) : (
                 <span className="px-1 font-semibold text-zinc-800">{active.familyName}</span>
               )}

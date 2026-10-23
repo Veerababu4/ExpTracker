@@ -4,25 +4,30 @@ import { decideJoinRequestAction, regenerateJoinCodeAction } from "@/actions/fam
 import { ActionButton, ConfirmButton, CopyButton } from "@/components/actions";
 import { buttonClass } from "@/components/button-class";
 import { Card } from "@/components/card";
-import { formatDate } from "@/lib/format";
+import { formatDate, formatMonth } from "@/lib/format";
 import { formatJoinCode } from "@/lib/rules/join-code";
 import { requireFamily } from "@/server/auth/family";
-import { getFamily, listMembers, pendingRequests } from "@/server/services/families";
+import { familySharing, type Sharing } from "@/server/services/books";
+import { getFamily, listMembers, pendingRequests, type Membership } from "@/server/services/families";
 import { LeaveFamily, MemberActions } from "./family-forms";
+import { SharingCard } from "./sharing-card";
 
 export const metadata: Metadata = { title: "Family · Family Expenses" };
 
 export default async function FamilyPage({ searchParams }: { searchParams: Promise<{ created?: string }> }) {
-  const { user, family } = await requireFamily();
+  const { user, family, families } = await requireFamily();
+  // In My expenses this page holds the sharing switch for every family and the book's own settings (M8).
+  if (family.kind === "PERSONAL") return <PersonalBookPage userId={user.id} families={families} />;
   const isHead = family.role === "HEAD";
   const familyId = family.familyId;
-  const [details, members, requests, params] = await Promise.all([
+  const [details, members, requests, sharing, params] = await Promise.all([
     getFamily(familyId),
     listMembers(familyId),
     isHead ? pendingRequests(user.id, familyId) : Promise.resolve([]),
+    familySharing(familyId),
     searchParams,
   ]);
-  const code = details ? formatJoinCode(details.joinCode) : "";
+  const code = details?.joinCode ? formatJoinCode(details.joinCode) : "";
 
   return (
     <div className="flex flex-col gap-6">
@@ -40,6 +45,8 @@ export default async function FamilyPage({ searchParams }: { searchParams: Promi
           logins for them yourself.
         </p>
       )}
+
+      <SharingCard userId={user.id} families={families} only={familyId} />
 
       {isHead && (
         <Card
@@ -115,7 +122,9 @@ export default async function FamilyPage({ searchParams }: { searchParams: Promi
                   )}
                   {isMe && <span className="rounded-full bg-zinc-100 px-2 py-0.5 text-xs font-medium text-zinc-700">You</span>}
                 </div>
-                <p className="-mt-1.5 text-xs text-zinc-500">Joined {formatDate(m.joinedAt)}</p>
+                <p className="-mt-1.5 text-xs text-zinc-500">
+                  Joined {formatDate(m.joinedAt)} · <span data-testid="member-sharing">{sharingLabel(sharing.get(m.userId), familyId)}</span>
+                </p>
                 {isHead && !isMe && <MemberActions familyId={familyId} memberId={m.userId} memberName={m.displayName} />}
               </li>
             );
@@ -172,6 +181,63 @@ export default async function FamilyPage({ searchParams }: { searchParams: Promi
       <p>
         <Link href="/welcome" className="text-sm font-medium text-teal-700 hover:underline">
           Create or join another family →
+        </Link>
+      </p>
+    </div>
+  );
+}
+
+/** Members list label (P3): whether this member's expenses are in this family this month. */
+function sharingLabel(s: Sharing | undefined, familyId: string): string {
+  if (s?.familyId === familyId) return s.since ? `Sharing since ${formatMonth(s.since)}` : "Sharing";
+  return s?.since ? `Personal only since ${formatMonth(s.since)}` : "Personal only";
+}
+
+/** /family while My expenses is open: sharing with each family, and this book's settings. */
+function PersonalBookPage({ userId, families }: { userId: string; families: Membership[] }) {
+  return (
+    <div className="flex flex-col gap-6">
+      <div>
+        <h1 className="text-2xl font-semibold">My expenses</h1>
+        <p className="text-sm text-zinc-600">Your own book — only you can see it.</p>
+      </div>
+
+      {families.length > 0 ? (
+        <SharingCard userId={userId} families={families} />
+      ) : (
+        <Card title="Your expenses" id="sharing">
+          <p className="text-sm text-zinc-600">
+            You&apos;re not in a family, so your expenses are personal only. Create or join a family to share them.
+          </p>
+        </Card>
+      )}
+
+      <Card title="Settings" id="settings">
+        <ul className="flex flex-col gap-2 text-sm">
+          <li>
+            <Link href="/family/categories" className="font-medium text-teal-700 hover:underline">
+              Categories →
+            </Link>{" "}
+            <span className="text-zinc-500">add, rename or hide your categories</span>
+          </li>
+          <li>
+            <Link href="/family/budget" className="font-medium text-teal-700 hover:underline">
+              Budget →
+            </Link>{" "}
+            <span className="text-zinc-500">your monthly budget, in total and per category</span>
+          </li>
+          <li>
+            <Link href="/family/limits" className="font-medium text-teal-700 hover:underline">
+              Alert limits →
+            </Link>{" "}
+            <span className="text-zinc-500">when the high-value warnings appear for you</span>
+          </li>
+        </ul>
+      </Card>
+
+      <p>
+        <Link href="/welcome" className="text-sm font-medium text-teal-700 hover:underline">
+          {families.length > 0 ? "Your families · create or join another →" : "Create or join a family →"}
         </Link>
       </p>
     </div>
