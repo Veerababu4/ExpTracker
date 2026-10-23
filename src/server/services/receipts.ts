@@ -155,6 +155,9 @@ function assertSiteAdmin(actor: Actor) {
   if (!isSiteAdmin(actor.username)) throw new NotAllowedError("Only the site admin can do that.");
 }
 
+/** The admin page's single line for every personal book's receipts together. */
+export const PERSONAL_BOOKS_LABEL = "Personal books (My expenses, all users)";
+
 export type ReceiptUsage = {
   enabled: boolean;
   usedBytes: number;
@@ -171,15 +174,25 @@ export async function receiptUsage(actor: Actor, capBytes = RECEIPTS_CAP_BYTES):
   const bytes = sql<string>`sum(${receipts.sizeBytes})`;
   const [byFamily, dbSize, isOn] = await Promise.all([
     db
-      .select({ familyId: families.id, familyName: families.name, count: sql<number>`count(*)::int`, bytes })
+      .select({ familyId: families.id, familyName: families.name, kind: families.kind, count: sql<number>`count(*)::int`, bytes })
       .from(receipts)
       .innerJoin(families, eq(families.id, receipts.familyId))
-      .groupBy(families.id, families.name)
+      .groupBy(families.id, families.name, families.kind)
       .orderBy(desc(bytes)),
     db.execute<{ size: string }>(sql`select pg_database_size(current_database()) as size`),
     enabled(db),
   ]);
-  const rows = byFamily.map((r) => ({ ...r, bytes: Number(r.bytes) }));
+  // Personal books (M8) are one line together: their owners' names aren't the admin's business.
+  const rows: ReceiptUsage["byFamily"] = [];
+  const personal = { familyId: "personal", familyName: PERSONAL_BOOKS_LABEL, count: 0, bytes: 0 };
+  for (const { kind, ...r } of byFamily) {
+    if (kind === "PERSONAL") {
+      personal.count += r.count;
+      personal.bytes += Number(r.bytes);
+    } else rows.push({ ...r, bytes: Number(r.bytes) });
+  }
+  if (personal.count > 0) rows.push(personal);
+  rows.sort((a, b) => b.bytes - a.bytes);
   return {
     enabled: isOn,
     usedBytes: rows.reduce((sum, r) => sum + r.bytes, 0),

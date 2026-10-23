@@ -1,6 +1,6 @@
 # Family Expenses — Design
 
-*Version 1.0 · 2026-10-22 · all milestones done*
+*Version 1.1 · 2026-10-23 · M8 added (My expenses, monthly sharing, home page)*
 
 A website where a family records its day-to-day expenses, looks at any month, searches between dates and
 tracks a monthly budget. Built for personal/family use (non-commercial), hosted for free.
@@ -339,7 +339,7 @@ personal, non-commercial use; requests are capped at 4.5 MB (receipts are at mos
 | M5 | Search between dates + monthly view with totals | ✅ `c2763c3` |
 | M6 | Budgets, charts, CSV export, mobile polish | ✅ `0898b23` (part 1) + `bd1f479` (part 2) |
 | M7 | Deploy to Vercel + Neon, production checks | ✅ `8e67a54` (merged `ba733fb`) — live at https://exptracker1.vercel.app |
-| M8 | My expenses (personal book for everyone) + monthly sharing with one family (§3.8). Part 1: schema, migration, sharing switch, add/edit routing, switcher. Part 2: My-expenses month/search/CSV/charts/budgets across books, admin, docs | 🟡 part 1 built (not committed) |
+| M8 | My expenses (personal book for everyone) + monthly sharing with one family (§3.8). Part 1: schema, migration, sharing switch, add/edit routing, switcher. Part 2: My-expenses month/search/CSV/charts/budgets across books, admin, docs | ✅ part 1 `de9443a` (PR #9, merged `248a3b7`, Neon at `0005` on 23 Oct 2026) + part 2 (PR open) |
 
 Each milestone: build → tests → browser check → summary → user reviews → commit only when asked.
 
@@ -486,6 +486,43 @@ Each milestone: build → tests → browser check → summary → user reviews �
   `.env.vercel` and never print it. Laptop quirk: the home router's DNS refuses `*.neon.tech` lookups, so both preload
   `scripts/dns-public.mjs`, which resolves only those names through public DNS (HANDOVER §7). The live site is not affected.
 
+### 10.9 As built — M8 (My expenses, monthly sharing, home page)
+
+- Migration `0005_personal_books`: `book_kind` enum and `families.kind` (`join_code` nullable, check: only families
+  have one; partial unique index: one personal book per user), `join_requests.include_expenses`, `expense_sharing`.
+  Its data part backfills a personal book (owner as HEAD, the 17 default categories) for every user and moves the
+  live expenses of the month it runs in (India time) from families to their owners' books — category matched by
+  name (missing ones copied), receipts moved, `EXPENSE_MOVED` logged in both books with no actor ("the site").
+  Applied on Neon on 23 Oct 2026, so October became personal for existing users.
+- `src/server/services/books.ts`: `createPersonalBook`, `personalBookId`, `sharingFor`/`bookForMonth` (latest
+  `expense_sharing` row ≤ month, only while still an active member), `setSharing` (upsert this month's row + move this
+  month's expenses from My expenses and the families I'm still in), `stopSharingOnLeave` (leave/remove writes a
+  personal row, nothing moves), `wouldMove` (count for the confirmation), `familySharing` (member labels; another
+  family's name is never shown).
+- `families.ts`: `myBooks` (My expenses first) vs `myFamilies`; join codes, member logins, head transfer, requests and
+  leaving refuse a personal book; the include option on create/join/head-created login; approving sets the member's
+  default book to the family if they never picked one.
+- `expenses.ts`: `addMyExpense` picks the book from the date's month; `addExpense` refuses another book's month
+  (`other_book`); an edit that changes the month into another book is refused; `expenseBookFor` lets the expense page
+  open an expense in its own book; the change log follows the expense; views carry `bookName`/`bookKind`.
+- `reports.ts` (part 2): a scope per request — a family's book, or with My expenses open **all my own expenses**
+  (owner = me, in My expenses or a family I'm still active in). Categories are merged by name (the row's key is my
+  own category of that name, so links and my category budgets work); the category search filter matches the name in
+  every one of my books; "Where" (which book) replaces "By member"; the trend and CSV ("Where" column) follow the
+  same scope. Budgets of My expenses compare with that whole total.
+- Pages: Add page says where it saves ("Saves to My expenses — only you can see it" / "Saves to Kumar family") and
+  shows a daily quote; its date box allows My expenses' (head) window, and a family month still refuses dates outside
+  the member window. `/family` has the "Your expenses" sharing card (confirmation says how many expenses move) and
+  member labels; with My expenses open it is the book's own settings page. `/welcome` greets new accounts (register
+  lands there). Header switcher: My expenses first.
+- Home page `/home` (static, no session read): hero text, quote carousel (prev/next, auto every 8 s, paused on
+  hover/focus and with reduce-motion), "Little savings add up" slider (₹ a day → ×30 → ×365), feature cards, steps.
+  Quotes in `src/lib/quotes.ts` (only checkable attributions); `quoteForDay` picks one per day.
+- Admin: every personal book's receipts are one line, "Personal books (My expenses, all users)".
+- Tests: `books.test.ts` (sharing, moves, guards, My-expenses reports), `quotes.test.ts`; E2E `personal.spec.ts`;
+  E2E helpers tick "include" by default and `shareSince()` writes `expense_sharing` in `family_test` for tests that
+  need earlier shared months. Playwright `globalTimeout` 30 min.
+
 ## 11. Decision log
 
 | Date | Decision |
@@ -500,4 +537,5 @@ Each milestone: build → tests → browser check → summary → user reviews �
 | 2026-10-22 | Search filters live in the address (GET form) so searches can be bookmarked and Back works; first visit shows no results until "Search". Monthly breakdown rows link to the matching search. |
 | 2026-10-22 | M6 in two parts (1: budgets, status, CSV · 2: charts, phone bottom bar). Charts drawn on the server by our own components, no chart library (built from HTML boxes, not SVG shapes, so text stays sharp on phones). The category rows themselves become the category chart (bars on one scale with budget ticks) instead of a second list. "Fill in from last month" fills the boxes without saving. Budgets up to ₹1,00,00,000. One CSV Route Handler serves both search and month downloads. |
 | 2026-10-22 | M7: Neon + Vercel functions in Singapore; Vercel imported from GitHub (no CLI); CSP without nonces (keeps Partial Prerendering); no uptime pinger (Neon free compute hours); secrets only in Vercel and the git-ignored `.env.vercel`. |
+| 2026-10-23 | M8: everyone gets a personal book "My expenses" (a `families` row of kind PERSONAL, so all family code is reused); sharing is per month with one family at a time, default personal only, from the current month (this month's expenses move along); go-live month personal for existing users; My expenses reports cover all my own expenses; moving into a family without the category → Uncategorised, into My expenses → copied; personal edit window = head window. Visitor home page with quotes. |
 | 2026-10-21 | Receipts stored in PostgreSQL (not Vercel Blob): one system, private, transactional. Shared limit 500 MB of Neon's 1 GB; site admin (`ADMIN_USERNAMES`) can switch new receipts off on `/admin`. Deleting an expense removes its receipt. |

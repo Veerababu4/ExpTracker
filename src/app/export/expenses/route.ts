@@ -7,6 +7,7 @@ import { todayInIndia } from "@/lib/rules/dates";
 import { uuidSchema } from "@/lib/validation/family";
 import { searchSchema } from "@/lib/validation/search";
 import { getCurrentUser } from "@/server/auth/session";
+import { bookKindOf } from "@/server/services/books";
 import { NotAllowedError } from "@/server/services/families";
 import { exportExpenses } from "@/server/services/reports";
 
@@ -40,11 +41,13 @@ export async function GET(request: NextRequest) {
     throw error;
   }
 
+  // My expenses (M8): the second column says where each one is kept instead of who added it.
+  const mine = (await bookKindOf(family.data)) === "PERSONAL";
   const csv = toCsv([
-    ["Date", "Member", "Category", "Payment mode", "Amount (₹)", "Note", "Receipt"],
+    ["Date", mine ? "Where" : "Member", "Category", "Payment mode", "Amount (₹)", "Note", "Receipt"],
     ...rows.map((e) => [
       e.expenseDate, // YYYY-MM-DD: Excel reads it as a date in any locale
-      ownerLabel(e),
+      mine ? e.bookName : ownerLabel(e),
       e.categoryName ?? UNCATEGORISED,
       e.paymentMode ? PAYMENT_MODES[e.paymentMode] : "",
       paiseToInput(e.amountPaise), // plain number, so Excel can add the column up

@@ -84,9 +84,13 @@ test("sharing: personal by default, include from this month (it moves along), th
   await expect(member.getByTestId("saves-to")).toContainText("Saves to Kumar family");
   await expect(await monthTotal(page)).toHaveText("₹500.00");
 
-  // From My expenses, she stops sharing: both move back.
+  // My expenses still shows all of hers — kept in the family this month (P8).
   await member.locator("#family-switcher").selectOption({ label: "My expenses" });
   await expectHome(member, "My expenses");
+  await expect(await monthTotal(member)).toHaveText("₹500.00");
+  await expect(member.getByRole("region", { name: "Where" })).toContainText("Kumar family");
+
+  // From My expenses, she stops sharing: both move back.
   await member.goto("/family");
   await member.getByRole("button", { name: "Stop including my expenses in Kumar family" }).click();
   await member.getByRole("button", { name: "Yes, personal only" }).click();

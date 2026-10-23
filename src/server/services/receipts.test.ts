@@ -8,7 +8,8 @@ import type { ExpenseInput } from "@/lib/validation/expense";
 import { registerUser } from "./accounts";
 import { addExpense, deleteExpense, expenseHistory, getExpense } from "./expenses";
 import { createFamily, decideJoinRequest, NotAllowedError, pendingRequests, removeMember, requestToJoin } from "./families";
-import { attachReceipt, receiptFile, receiptUsage, removeReceipt, setReceiptsEnabled, uploadState } from "./receipts";
+import { personalBookId } from "./books";
+import { attachReceipt, PERSONAL_BOOKS_LABEL, receiptFile, receiptUsage, removeReceipt, setReceiptsEnabled, uploadState } from "./receipts";
 
 const TODAY = "2026-10-21"; // member window: 1–21 Oct; head window: 1 Aug – 21 Oct
 
@@ -218,6 +219,16 @@ describe("site admin", () => {
     expect(usage).toMatchObject({ enabled: true, usedBytes: 4000, count: 2, capBytes: 500 * 1024 * 1024 });
     expect(usage.byFamily).toEqual([{ familyId, familyName: "Kumar family", count: 2, bytes: 4000 }]);
     expect(usage.databaseBytes).toBeGreaterThan(0);
+  });
+
+  it("shows every personal book's receipts as one line, without names (M8)", async () => {
+    const { head } = await setup();
+    for (const name of ["gopal", "lata"]) {
+      const id = await user(name);
+      await added(id, await personalBookId(id), jpeg(1000)); // not in a family: My expenses
+    }
+    const usage = await receiptUsage({ id: head, username: "ravi" });
+    expect(usage.byFamily).toEqual([{ familyId: "personal", familyName: PERSONAL_BOOKS_LABEL, count: 2, bytes: 2000 }]);
   });
 
   it("is only who ADMIN_USERNAMES lists — a family head is not enough", async () => {
